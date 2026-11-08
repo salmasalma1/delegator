@@ -1,0 +1,34 @@
+# --- secrets ---------------------------------------------------------------
+.env
+*.key
+
+# --- databases and run artefacts -------------------------------------------
+*.db
+*.db-journal
+*.sqlite
+smoke/
+_stray/
+
+# --- python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+
+# --- other teams' packages drop in here; a checkout must never ship a
+#     stale copy of someone else's deliverable ------------------------------
+integrations/nelly_vision/
+integrations/checkpointSaver/
+external/
+vendor/
+
+# --- local scratch ---------------------------------------------------------
+*.log
+graph_checkpoints.db
+
+# --- delivery artifacts: these are concatenations of the source above, kept
+#     outside the repo so a clone is source, not packing slips ---------------
+DEVIN_PHASE1_*.txt
+DEVIN_PROMPT*.txt
+EVERYTHING_SO_FAR.md

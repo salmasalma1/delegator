@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nelly:contracts:04_securityevent",
+  "title": "NELLY SecurityEvent",
+  "description": "Security and audit event produced by Team 3.",
+  "type": "object",
+  "required": [
+    "event_id",
+    "event_type",
+    "severity",
+    "timestamp"
+  ],
+  "properties": {
+    "event_id": {
+      "type": "string"
+    },
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "approval_requested",
+        "approval_granted",
+        "approval_denied",
+        "auth_success",
+        "auth_failure",
+        "account_locked",
+        "policy_violation",
+        "capability_blocked"
+      ]
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "warning",
+        "high",
+        "critical"
+      ]
+    },
+    "task_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "session_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "details": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

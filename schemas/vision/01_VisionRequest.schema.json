@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nelly:contracts:01_visionrequest",
+  "title": "NELLY VisionRequest",
+  "description": "Request sent to Team 1 for screen analysis.",
+  "type": "object",
+  "required": [
+    "request_id",
+    "task_id",
+    "analysis_type",
+    "target_description"
+  ],
+  "properties": {
+    "request_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "analysis_type": {
+      "type": "string",
+      "enum": [
+        "ui_element_detection",
+        "screen_understanding",
+        "target_verification",
+        "dialog_detection"
+      ]
+    },
+    "target_description": {
+      "type": "string"
+    },
+    "screenshot_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "application": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "min_confidence": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    }
+  },
+  "additionalProperties": false
+}

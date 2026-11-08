@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nelly:contracts:04_executionresult",
+  "title": "NELLY ExecutionResult",
+  "description": "Execution and post-action verification result returned by Team 1.",
+  "type": "object",
+  "required": [
+    "action_id",
+    "task_id",
+    "status",
+    "verification_status"
+  ],
+  "properties": {
+    "action_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "success",
+        "failed",
+        "partial",
+        "blocked",
+        "cancelled",
+        "awaiting_confirmation"
+      ]
+    },
+    "verification_status": {
+      "type": "string",
+      "enum": [
+        "verified",
+        "not_verified",
+        "verification_failed",
+        "not_applicable"
+      ]
+    },
+    "strategy_used": {
+      "type": "string"
+    },
+    "duration_ms": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "output": {
+      "type": "object"
+    },
+    "error": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "screenshot_after_ref": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

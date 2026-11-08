@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nelly:contracts:03_executionrequest",
+  "title": "NELLY ExecutionRequest",
+  "description": "Approved action request sent to the execution adapter.",
+  "type": "object",
+  "required": [
+    "action_id",
+    "task_id",
+    "action_type",
+    "application",
+    "strategy"
+  ],
+  "properties": {
+    "action_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "action_type": {
+      "type": "string",
+      "enum": [
+        "click",
+        "type",
+        "scroll",
+        "open_app",
+        "navigate",
+        "select",
+        "wait",
+        "close_dialog",
+        "cancel"
+      ]
+    },
+    "target_element_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "parameters": {
+      "type": "object"
+    },
+    "application": {
+      "type": "string"
+    },
+    "strategy": {
+      "type": "string",
+      "enum": [
+        "browser_adapter",
+        "desktop_adapter",
+        "ui_automation",
+        "vision_fallback",
+        "keyboard_action"
+      ]
+    }
+  },
+  "additionalProperties": false
+}

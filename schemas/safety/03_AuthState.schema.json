@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nelly:contracts:03_authstate",
+  "title": "NELLY AuthState",
+  "description": "Local facial-authentication state for protected sessions.",
+  "type": "object",
+  "required": [
+    "session_id",
+    "status",
+    "method"
+  ],
+  "properties": {
+    "session_id": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "locked",
+        "enrollment_required",
+        "authenticated",
+        "verification_failed",
+        "temporarily_locked"
+      ]
+    },
+    "method": {
+      "type": "string",
+      "enum": [
+        "facial_authentication",
+        "none"
+      ]
+    },
+    "attempt_count": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "protected_context_access": {
+      "type": "boolean"
+    }
+  },
+  "additionalProperties": false
+}

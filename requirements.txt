@@ -1,0 +1,6 @@
+langgraph==0.2.39
+langgraph-checkpoint-sqlite==2.0.4
+python-dotenv==1.2.4
+jsonschema==4.26.0
+requests==2.34.2
+openai==3.37.0

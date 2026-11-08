@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:nelly:contracts:02_safetydecision",
+  "title": "NELLY SafetyDecision",
+  "description": "Safety decision returned by Team 3.",
+  "type": "object",
+  "required": [
+    "action_id",
+    "task_id",
+    "decision",
+    "risk_level",
+    "reason"
+  ],
+  "properties": {
+    "action_id": {
+      "type": "string"
+    },
+    "task_id": {
+      "type": "string"
+    },
+    "decision": {
+      "type": "string",
+      "enum": [
+        "approved",
+        "rejected",
+        "needs_user_approval",
+        "blocked"
+      ]
+    },
+    "risk_level": {
+      "type": "string",
+      "enum": [
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ]
+    },
+    "requires_user_confirmation": {
+      "type": "boolean"
+    },
+    "policy_id": {
+      "type": "string"
+    },
+    "reason": {
+      "type": "string"
+    },
+    "approval_id": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": false
+}
