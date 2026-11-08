@@ -16,7 +16,9 @@ except Exception:                                   # execution module not prese
 
 from vision.adapter import normalize, fallback_result
 from vision.validate import validate_vision_result
-from graph.action_decider import decide_action
+import os
+import llm
+from graph.action_decider import decide_action, decide_next
 from graph.safety_port import get_safety
 
 
@@ -117,77 +119,151 @@ def _act(req: dict) -> dict:
     return res
 
 
-def run_app_subgraph(app: str, node: str, steps: list, task_id: str,
-                     screenshot=None, scenario: str = None, flag: str = None) -> dict:
-    if isinstance(steps, str):   # guard: a bare string must not be iterated char-by-char
-        steps = [steps]
-    sub_result = {"app": app, "node": node, "status": "running", "steps_done": []}
+MAX_ACTIONS = int(os.getenv("NELLY_MAX_ACTIONS", "8"))     # the worker's leash per sub-goal
+STUCK_AFTER = 3                                             # same action this many times in a row = stuck
+
+
+def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, ctx: dict, label: str):
+    """
+    SAFETY then ACT for one decided action, and record it.
+    Returns (ok, exec_result). ok=False means the worker must stop: sub_result already says why.
+    """
+    element = decision.get("element") or {}
+    req = _build_request(decision, app, task_id)
+
+    verdict = safety.check(req)
+    sub_result["last_safety_decision"] = verdict
+    if verdict["decision"] == "needs_approval":
+        sub_result["status"] = "needs_approval"
+        sub_result["error"] = f"approval needed: {verdict.get('reason')}"
+        sub_result["proposed_action"] = req              # frozen: what the user would approve
+        return False, None
+    if verdict["decision"] != "approved":
+        sub_result["status"] = "failed"
+        sub_result["error"] = f"safety {verdict['decision']}: {verdict.get('reason')}"
+        return False, None
+
+    exec_result = _act(req)
+    sub_result["last_execution_result"] = exec_result
+    dry = bool((exec_result.get("output") or {}).get("dry_run"))
+    if dry:
+        _note_dry_run()
+    elif exec_result.get("status") in ("failed", "blocked", "cancelled"):
+        sub_result["status"] = "failed"
+        sub_result["error"] = f"execution {exec_result.get('status')}: {exec_result.get('error')}"
+        return False, exec_result
+
+    sub_result["steps_done"].append({
+        "step": label,
+        "status": "dry_run" if dry else exec_result.get("status"),
+        "execution": {"action_type": req["action_type"],
+                      "duration_ms": exec_result.get("duration_ms"),
+                      "action_id": exec_result.get("action_id")},
+        "target": {"element_id": element.get("element_id"), "type": element.get("type"),
+                   "bbox_norm": element.get("bbox_norm"),            # [x,y,w,h] canonical
+                   "center_norm": element.get("center_norm"),
+                   "center_abs": element.get("center_abs"),
+                   "confidence": element.get("confidence")},
+        "decision": {"decider": decision["decider"], "why": decision["why"]},
+        "safety": {"decision": verdict["decision"], "mock": verdict.get("mock")},
+        "quality": ctx["quality"]["score"],
+    })
+    return True, exec_result
+
+
+def _observe(sub_result: dict, ctx: dict) -> bool:
+    """Record what we see. False = the screen is not readable enough to act on."""
+    sub_result["last_vision_result"] = ctx
+    sub_result["vision_source"] = ctx["vision_source"]
+    sub_result["quality"] = ctx["quality"]
+    if ctx["needs_review"]:      # don't act on unreadable grounding — escalate instead of guessing
+        sub_result["status"] = "needs_review"
+        sub_result["error"] = f"vision_not_actionable: {ctx['quality']['reasons']}"
+        return False
+    return True
+
+
+def _sig(decision: dict) -> tuple:
+    p = decision["params"]
+    return (decision["action"], (decision.get("element") or {}).get("element_id"),
+            p.get("text"), tuple(p.get("keys") or ()), p.get("path"))
+
+
+def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions) -> dict:
+    """
+    The worker as a mini-agent: look -> decide ONE action -> safety -> act -> look again,
+    until the model says `finish`, the leash runs out, or it gets stuck.
+    It never judges success: `finish` only means "I think I am done"; Verify decides.
+    """
+    sub_result = {"app": app, "node": node, "status": "running", "steps_done": [], "mode": "loop"}
     safety = get_safety()
+    history, sigs, shot = [], [], screenshot
 
-    for step in steps:
-        ctx = perceive_screen(app, step, screenshot, scenario)
-        sub_result["last_vision_result"] = ctx
-        sub_result["vision_source"] = ctx["vision_source"]
-        sub_result["quality"] = ctx["quality"]
-
-        # Quality gate: don't act on unreadable grounding — escalate instead of guessing.
-        if ctx["needs_review"]:
-            sub_result["status"] = "needs_review"
-            sub_result["error"] = f"vision_not_actionable: {ctx['quality']['reasons']}"
+    for _ in range(max_actions):
+        ctx = perceive_screen(app, node, shot, scenario)
+        if not _observe(sub_result, ctx):
             return sub_result
 
-        # DECIDE: the worker picks its own action from what is on screen. Unresolved => send it
-        # back, never guess.
+        decision = decide_next(app, node, flag, hints, history, ctx)
+        if decision["status"] != "ok":
+            sub_result["status"] = "needs_regrounding"
+            sub_result["error"] = f"step_not_resolved: {node!r} ({decision['why']})"
+            sub_result["ungrounded_step"] = node
+            return sub_result
+        if decision["action"] == "finish":
+            sub_result["status"] = "completed"
+            sub_result["finish_reason"] = decision["why"]
+            return sub_result
+
+        sigs.append(_sig(decision))
+        if len(sigs) >= STUCK_AFTER and len(set(sigs[-STUCK_AFTER:])) == 1:
+            sub_result["status"] = "failed"
+            sub_result["error"] = f"stuck: repeated {decision['action']} {STUCK_AFTER} times with no progress"
+            return sub_result
+
+        ok, exec_result = _perform(decision, app, task_id, safety, sub_result, ctx,
+                                   f"{decision['action']}: {decision['why']}")
+        if not ok:
+            return sub_result
+        history.append(f"{len(history) + 1}. {decision['action']} "
+                       f"{(decision.get('element') or {}).get('element_id') or ''} {decision['why']}".strip())
+        # look at the screen the executor just left, when it gives one
+        shot = (exec_result or {}).get("screenshot_after_ref") or screenshot
+
+    sub_result["status"] = "failed"
+    sub_result["error"] = f"max_actions_exhausted: {max_actions} actions and the sub-goal is not finished"
+    return sub_result
+
+
+def _run_steps(app, node, steps, task_id, screenshot, scenario, flag) -> dict:
+    """No model: one action per step (the old behaviour, legacy prefix parser)."""
+    sub_result = {"app": app, "node": node, "status": "running", "steps_done": [], "mode": "steps"}
+    safety = get_safety()
+    for step in steps:
+        ctx = perceive_screen(app, step, screenshot, scenario)
+        if not _observe(sub_result, ctx):
+            return sub_result
         decision = decide_action(step, app, node, ctx, flag=flag)
         if decision["status"] != "ok":
             sub_result["status"] = "needs_regrounding"
             sub_result["error"] = f"step_not_resolved: {step!r} ({decision['why']})"
             sub_result["ungrounded_step"] = step
             return sub_result
-        element = decision.get("element") or {}
-        req = _build_request(decision, app, task_id)
-
-        # SAFETY: the only door to the machine. Approved => act. Anything else => stop.
-        verdict = safety.check(req)
-        sub_result["last_safety_decision"] = verdict
-        if verdict["decision"] == "needs_approval":
-            sub_result["status"] = "needs_approval"
-            sub_result["error"] = f"approval needed: {verdict.get('reason')}"
-            sub_result["proposed_action"] = req          # frozen: what the user would approve
+        ok, _ = _perform(decision, app, task_id, safety, sub_result, ctx, step)
+        if not ok:
             return sub_result
-        if verdict["decision"] != "approved":
-            sub_result["status"] = "failed"
-            sub_result["error"] = f"safety {verdict['decision']}: {verdict.get('reason')}"
-            return sub_result
-
-        # ACT. Send the frozen ExecutionRequest and keep exactly what came back.
-        # A dry run must not look like success — that was the persistence lesson.
-        exec_result = _act(req)
-        sub_result["last_execution_result"] = exec_result
-        dry = bool((exec_result.get("output") or {}).get("dry_run"))
-        if dry:
-            _note_dry_run()
-        elif exec_result.get("status") in ("failed", "blocked", "cancelled"):
-            sub_result["status"] = "failed"
-            sub_result["error"] = f"execution {exec_result.get('status')}: {exec_result.get('error')}"
-            return sub_result
-
-        sub_result["steps_done"].append({
-            "step": step,
-            # dry_run is recorded as dry_run — never as success. See _note_dry_run().
-            "status": "dry_run" if dry else exec_result.get("status"),
-            "execution": {"action_type": req["action_type"],
-                          "duration_ms": exec_result.get("duration_ms"),
-                          "action_id": exec_result.get("action_id")},
-            "target": {"element_id": element.get("element_id"), "type": element.get("type"),
-                       "bbox_norm": element.get("bbox_norm"),        # [x,y,w,h] canonical
-                       "center_norm": element.get("center_norm"),
-                       "center_abs": element.get("center_abs"),
-                       "confidence": element.get("confidence")},
-            "decision": {"decider": decision["decider"], "why": decision["why"]},
-            "safety": {"decision": verdict["decision"], "mock": verdict.get("mock")},
-            "quality": ctx["quality"]["score"],
-        })
-
     sub_result["status"] = "completed"
     return sub_result
+
+
+def run_app_subgraph(app: str, node: str, steps: list, task_id: str,
+                     screenshot=None, scenario: str = None, flag: str = None,
+                     max_actions: int = None) -> dict:
+    """`steps` are HINTS written by the planner. With a model the worker loops on the live screen;
+    without one it falls back to one action per step."""
+    if isinstance(steps, str):   # guard: a bare string must not be iterated char-by-char
+        steps = [steps]
+    use_loop = llm.available() and os.getenv("NELLY_ACTION_DECIDER", "").lower() != "legacy"
+    if use_loop:
+        return _run_loop(app, node, steps, task_id, screenshot, scenario, flag, max_actions or MAX_ACTIONS)
+    return _run_steps(app, node, steps, task_id, screenshot, scenario, flag)
