@@ -17,6 +17,7 @@ def delegate_node(state: AgentState) -> dict:
         app=node.get("app", "Notepad"), node=node.get("node", ""),
         steps=node.get("steps", []), task_id=state.get("task_id", ""),
         screenshot=state.get("screenshot"), scenario=state.get("vision_scenario"),
+        flag=node.get("flag"),
     )
     # The verifier reads state["after_screenshot"]. Without this the VLM verifier never runs.
     # Reset it every node so a stale screenshot from the previous node is never judged.
