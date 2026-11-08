@@ -11,7 +11,12 @@ from graph.nodes.plan_check import plan_check_node
 
 
 def route_after_director(s):
-    return "end" if s.get("status") == "failed" else "plan_check"
+    status = s.get("status")
+    if status == "failed":
+        return "end"
+    if status == "escalate":
+        return "escalate"         # the planner needs an answer from the user
+    return "plan_check"
 
 
 def route_after_plan_check(s):
@@ -77,7 +82,7 @@ def build_graph(checkpointer: str = "memory"):
     b.add_node("finalize", finalize_node)
 
     b.set_entry_point("director")
-    b.add_conditional_edges("director", route_after_director, {"plan_check": "plan_check", "end": END})
+    b.add_conditional_edges("director", route_after_director, {"plan_check": "plan_check", "escalate": "escalate", "end": END})
     b.add_conditional_edges("plan_check", route_after_plan_check,
                             {"delegate": "delegate", "director": "director", "escalate": "escalate"})
     b.add_conditional_edges("delegate", route_after_delegate, {"verify_step": "verify_step"})
