@@ -19,7 +19,7 @@ class QwenProvider(StrategyProvider):
         self.base_url = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
         self.api_key = os.getenv("DASHSCOPE_API_KEY")
 
-    def plan(self, task: str, vision_ctx=None, memory_ctx=None) -> List[dict]:
+    def plan(self, task: str, vision_ctx=None, memory_ctx=None, replan_ctx=None) -> List[dict]:
         if not self.api_key:
             raise RuntimeError("DASHSCOPE_API_KEY not set — cannot use real reasoning. Set NELLY_BRAIN=qwen and API key.")
         from openai import OpenAI
@@ -30,6 +30,15 @@ Each Node: {"node": "App: action", "flag": "completion condition", "app": "AppNa
 Rules: Top-30 elements, window-relative coordinates, one app per Node, 1-3 steps per Node.
 Return JSON list only."""
         user = f"Task: {task}\nVision: {str(vision_ctx)[:500]}\nMemory: {str(memory_ctx)[:300]}"
+        if replan_ctx:
+            user += (
+                "\n\nREPLAN: the previous plan failed. Plan ONLY the remaining work; "
+                "do not repeat completed nodes."
+                f"\nFailed node: {replan_ctx.get('failed_node')}"
+                f"\nWhy it failed: {replan_ctx.get('reason')}"
+                f"\nAlready completed (do not redo): {[n.get('node') for n in replan_ctx.get('completed_nodes') or []]}"
+                f"\nAttempt: {replan_ctx.get('attempt')}"
+            )
         resp = client.chat.completions.create(
             model=self.model,
             messages=[{"role":"system","content":system},{"role":"user","content":user}],
