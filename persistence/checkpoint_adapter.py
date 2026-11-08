@@ -7,7 +7,10 @@ import sqlite3
 from datetime import datetime, timezone
 from typing import Optional
 
-STORE_MODULE = os.getenv("NELLY_CHECKPOINT_MODULE", "checkpointSaver.db_helpers")
+# Bassant's repo ships db_helpers.py at its root. NELLY_CHECKPOINT_MODULE overrides.
+STORE_MODULES = ([os.environ["NELLY_CHECKPOINT_MODULE"]] if os.getenv("NELLY_CHECKPOINT_MODULE")
+                 else ["db_helpers", "checkpointSaver.db_helpers"])
+STORE_MODULE = STORE_MODULES[0]
 
 _warned = set()
 
@@ -22,12 +25,18 @@ def _warn(msg: str):
 # backend resolution
 # --------------------------------------------------------------------------
 def _store():
-    try:
-        import importlib
-        return importlib.import_module(STORE_MODULE)
-    except Exception as e:                                        # noqa: BLE001
-        _warn(f"checkpoint store not importable ({STORE_MODULE}): {type(e).__name__}: {e}")
-        return None
+    import importlib
+    errs = []
+    for name in STORE_MODULES:
+        try:
+            return importlib.import_module(name)
+        except Exception as e:                                    # noqa: BLE001
+            errs.append(f"{name}: {type(e).__name__}: {e}")
+    msg = "checkpoint store not importable -> using the local SHIM, not the team DB. " + " | ".join(errs)
+    if os.getenv("NELLY_REQUIRE_STORE") == "1":                   # no silent fallback in real runs
+        raise RuntimeError(msg)
+    _warn(msg)
+    return None
 
 
 def _shim():
