@@ -37,7 +37,7 @@ def verify_step_node(state: AgentState) -> dict:
     node = nodes[idx]
 
     # Worker already refused to act (unreadable grounding / ungrounded step) -> escalate.
-    if sub.get("status") in ("needs_review", "needs_regrounding"):
+    if sub.get("status") in ("needs_review", "needs_regrounding", "needs_approval"):
         return _persist(state, {
             "status": "escalate",
             "escalation_reason": sub.get("error") or sub.get("status"),
@@ -118,5 +118,6 @@ def finalize_node(state: AgentState) -> dict:
             "methods": sorted({v.get("method") for v in verifs}),
             "semantic": any(v.get("semantic") for v in verifs),
             "executed_all": not never_ran,
+            "plan_check": (state.get("plan_check") or {}).get("method"),
         },
     }
