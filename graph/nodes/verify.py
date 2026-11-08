@@ -1,6 +1,9 @@
 from graph.state import AgentState
 from persistence import audit
 
+# step statuses that mean "nothing was really done on the machine"
+NOT_EXECUTED = ("dry_run", "unexecuted")
+
 
 def _persist(state, out):
     """
@@ -44,8 +47,11 @@ def verify_step_node(state: AgentState) -> dict:
     verdict = get_verifier().verify(
         node, sub, state.get("grounding"), state.get("after_screenshot")
     )
+    # A step that was only a dry run (or never executed) proved nothing about the screen.
+    # The verdict may still pass the wiring check, but it is recorded as NOT executed.
+    executed = not any(s.get("status") in NOT_EXECUTED for s in (sub.get("steps_done") or []))
     entry = {"node": node.get("node"), "app": node.get("app"), "flag": node.get("flag"),
-             "round": state.get("plan_round", 1), **verdict}
+             "round": state.get("plan_round", 1), "executed": executed, **verdict}
     verifications = (state.get("verifications") or []) + [entry]
 
     if verdict["passed"]:
@@ -86,10 +92,13 @@ def finalize_node(state: AgentState) -> dict:
     failed = [v for v in recent if not v.get("passed")]
     covered = len({v["node"] for v in recent if v.get("passed")})
 
+    never_ran = any(v.get("executed") is False for v in recent)
+
     if escalated:
         status = "escalated"
     elif nodes and covered >= len(nodes) and not failed:
-        status = "completed"
+        # Wiring passed, but if any step was only a dry run, do NOT claim the task is done.
+        status = "dry_run" if never_ran else "completed"
     elif failed:
         status = "failed"
     else:
@@ -108,5 +117,6 @@ def finalize_node(state: AgentState) -> dict:
             "replans": state.get("replans", 0),
             "methods": sorted({v.get("method") for v in verifs}),
             "semantic": any(v.get("semantic") for v in verifs),
+            "executed_all": not never_ran,
         },
     }
