@@ -43,7 +43,11 @@ class RuleVerifier(Verifier):
             problems.append(f"worker_status={status}")
         if not steps:
             problems.append("no_steps_done")
-        if any(not (s.get("target") or {}).get("element_id") for s in steps):
+        # only actions that point at something on screen need a grounded element
+        needs_el = ("click", "type")
+        if any(not (s.get("target") or {}).get("element_id")
+               and (s.get("execution") or {}).get("action_type", "click") in needs_el
+               for s in steps):
             problems.append("step_without_grounded_target")
         if not flag or flag.lower() in ("done", "ok", "success", "completed"):
             problems.append("flag_not_checkable")

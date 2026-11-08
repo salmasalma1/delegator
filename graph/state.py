@@ -34,6 +34,8 @@ class AgentState(TypedDict, total=False):
     escalation: Optional[dict]
     latency_ms: Optional[int]
     plan_round: int
+    plan_check: Optional[dict]        # verdict of the pre-execution plan check
+    plan_check_retries: int
     requires_user: bool
     after_screenshot: Optional[str]   # post-action screenshot path for the VLM verifier
     verification_summary: Optional[dict]

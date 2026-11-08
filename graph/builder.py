@@ -7,10 +7,20 @@ from graph.nodes.director import director_node
 from graph.nodes.delegate import delegate_node
 from graph.nodes.verify import verify_step_node, finalize_node
 from graph.nodes.escalate import escalate_node
+from graph.nodes.plan_check import plan_check_node
 
 
 def route_after_director(s):
-    return "end" if s.get("status") == "failed" else "delegate"
+    return "end" if s.get("status") == "failed" else "plan_check"
+
+
+def route_after_plan_check(s):
+    status = s.get("status", "")
+    if status == "delegating":
+        return "delegate"         # plan matches the request
+    if status == "replan":
+        return "director"         # mismatch, one bounded re-plan
+    return "escalate"             # still wrong -> ask the user, run nothing
 
 
 def route_after_delegate(s):
@@ -60,13 +70,16 @@ def _checkpointer(kind: str = "memory"):
 def build_graph(checkpointer: str = "memory"):
     b = StateGraph(AgentState)
     b.add_node("director", director_node)
+    b.add_node("plan_check", plan_check_node)
     b.add_node("delegate", delegate_node)
     b.add_node("verify_step", verify_step_node)
     b.add_node("escalate", escalate_node)
     b.add_node("finalize", finalize_node)
 
     b.set_entry_point("director")
-    b.add_conditional_edges("director", route_after_director, {"delegate": "delegate", "end": END})
+    b.add_conditional_edges("director", route_after_director, {"plan_check": "plan_check", "end": END})
+    b.add_conditional_edges("plan_check", route_after_plan_check,
+                            {"delegate": "delegate", "director": "director", "escalate": "escalate"})
     b.add_conditional_edges("delegate", route_after_delegate, {"verify_step": "verify_step"})
     b.add_conditional_edges("verify_step", route_after_verify,
                             {"delegate": "delegate", "director": "director",
