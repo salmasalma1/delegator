@@ -9,7 +9,7 @@ except: pass
 from typing import List
 
 class StrategyProvider:
-    def plan(self, task: str, vision_ctx=None, memory_ctx=None) -> List[dict]:
+    def plan(self, task: str, vision_ctx=None, memory_ctx=None, replan_ctx=None) -> List[dict]:
         raise NotImplementedError
 
 class QwenProvider(StrategyProvider):
