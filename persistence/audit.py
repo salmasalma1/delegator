@@ -11,6 +11,8 @@ The checkpoint store owns the schema. We only call the agreed API:
 import importlib
 import os
 
+from persistence.redact import redact
+
 _backend = None
 _backend_name = None
 _warned = set()
@@ -82,6 +84,7 @@ def record(state: dict) -> str | None:
     if not enabled():
         return None
     try:
+        state = redact(state)          # the store keeps whatever it is given
         be = _load()
         _init(be)
         if _backend_name == "persistence.db_shim":

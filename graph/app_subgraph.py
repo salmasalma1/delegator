@@ -16,7 +16,8 @@ except Exception:                                   # execution module not prese
 
 from vision.adapter import normalize, fallback_result
 from vision.validate import validate_vision_result
-from vision.ground import pick as pick_element
+from graph.action_decider import decide_action
+from graph.safety_port import get_safety
 
 
 class AppSubState(TypedDict, total=False):
@@ -73,35 +74,6 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
     return normalize(fallback_result(app, target), source="fallback")
 
 
-# Which primitive does a plain-language step correspond to?
-_STEP_ACTION = (("type ", "type"), ("write ", "type"), ("click ", "click"),
-                ("press ", "press"), ("open ", "click"), ("save", "save_file"),
-                ("create folder", "create_folder"), ("focus", "focus_window"))
-
-
-def _action_for(step: str) -> str:
-    low = (step or "").strip().lower()
-    for prefix, action in _STEP_ACTION:
-        if low.startswith(prefix):
-            return action
-    return "click"          # the safest default: a click needs a grounded element
-
-
-def _action_params(step: str, action: str, element: dict) -> dict:
-    low = (step or "").strip()
-    if action == "type":
-        text = low
-        for p in ("type ", "write ", "enter "):
-            if low.lower().startswith(p):
-                text = low[len(p):].strip().strip('"\'')
-                break
-        return {"text": text, "bbox_norm": element["bbox_norm"]}
-    if action == "press":
-        keys = low.split(" ", 1)[1] if " " in low else low
-        return {"keys": [k.strip().lower() for k in keys.split("+")]}
-    return {"bbox_norm": element["bbox_norm"]}
-
-
 _dry_noted = [False]
 
 
@@ -114,42 +86,43 @@ def _note_dry_run():
     print("            Steps are recorded as 'dry_run', never as 'success'.")
 
 
-def _act(step: str, app: str, element: dict, task_id: str) -> dict:
+def _build_request(decision: dict, app: str, task_id: str) -> dict:
+    """The ONE frozen ExecutionRequest. Safety sees exactly this; the executor runs exactly this."""
+    element = decision.get("element") or {}
+    return {
+        "action_id": str(uuid.uuid4()),
+        "task_id": task_id,
+        "action_type": decision["action"],
+        "target_element_id": element.get("element_id"),
+        "parameters": decision["params"],
+        "application": app,
+        "strategy": "vision_fallback",
+    }
+
+
+def _act(req: dict) -> dict:
     """
-    Build an ExecutionRequest (schemas/vision/03_...) and run it.
+    Run an already-approved ExecutionRequest.
 
     No adapter present -> return a neutral record. It is NOT "success": the step is
     reported as unexecuted so nobody downstream can mistake intention for action.
     """
-    action = _action_for(step)
-    req = {
-        "action_id": str(uuid.uuid4()),
-        "task_id": task_id,
-        "action_type": action,
-        "target_element_id": element.get("element_id"),
-        "parameters": _action_params(step, action, element),
-        "application": app,
-        "strategy": "vision_fallback",
-    }
     if not HAS_ADAPTER:
-        return {"action_id": req["action_id"], "task_id": task_id, "status": "unexecuted",
+        return {"action_id": req["action_id"], "task_id": req["task_id"], "status": "unexecuted",
                 "verification_status": "not_verified", "strategy_used": "none",
-                "duration_ms": 0, "output": {"action_type": action},
+                "duration_ms": 0, "output": {"action_type": req["action_type"]},
                 "error": "no execution adapter installed", "screenshot_after_ref": None}
     res = desktop_adapter.execute(req)
-    res.setdefault("output", {})["action_type"] = action
+    res.setdefault("output", {})["action_type"] = req["action_type"]
     return res
 
 
-def mock_safety_allow(action_id: str):
-    return {"decision": "approved", "action_id": action_id, "reason": "low risk"}
-
-
 def run_app_subgraph(app: str, node: str, steps: list, task_id: str,
-                     screenshot=None, scenario: str = None) -> dict:
+                     screenshot=None, scenario: str = None, flag: str = None) -> dict:
     if isinstance(steps, str):   # guard: a bare string must not be iterated char-by-char
         steps = [steps]
     sub_result = {"app": app, "node": node, "status": "running", "steps_done": []}
+    safety = get_safety()
 
     for step in steps:
         ctx = perceive_screen(app, step, screenshot, scenario)
@@ -163,25 +136,33 @@ def run_app_subgraph(app: str, node: str, steps: list, task_id: str,
             sub_result["error"] = f"vision_not_actionable: {ctx['quality']['reasons']}"
             return sub_result
 
-        # Ground the step to ONE element. Ungrounded => do NOT guess, send it back.
-        g = pick_element(step, ctx["elements"])
-        if g["status"] != "grounded":
+        # DECIDE: the worker picks its own action from what is on screen. Unresolved => send it
+        # back, never guess.
+        decision = decide_action(step, app, node, ctx, flag=flag)
+        if decision["status"] != "ok":
             sub_result["status"] = "needs_regrounding"
-            sub_result["error"] = f"step_not_grounded: {step!r} ({g['why']})"
+            sub_result["error"] = f"step_not_resolved: {step!r} ({decision['why']})"
             sub_result["ungrounded_step"] = step
             return sub_result
-        element = g["element"]
+        element = decision.get("element") or {}
+        req = _build_request(decision, app, task_id)
 
-        decision = mock_safety_allow(str(uuid.uuid4()))
-        sub_result["last_safety_decision"] = decision
-        if decision["decision"] != "approved":
+        # SAFETY: the only door to the machine. Approved => act. Anything else => stop.
+        verdict = safety.check(req)
+        sub_result["last_safety_decision"] = verdict
+        if verdict["decision"] == "needs_approval":
+            sub_result["status"] = "needs_approval"
+            sub_result["error"] = f"approval needed: {verdict.get('reason')}"
+            sub_result["proposed_action"] = req          # frozen: what the user would approve
+            return sub_result
+        if verdict["decision"] != "approved":
             sub_result["status"] = "failed"
-            sub_result["error"] = decision["reason"]
+            sub_result["error"] = f"safety {verdict['decision']}: {verdict.get('reason')}"
             return sub_result
 
-        # ACT. Send one frozen ExecutionRequest and keep exactly what came back.
+        # ACT. Send the frozen ExecutionRequest and keep exactly what came back.
         # A dry run must not look like success — that was the persistence lesson.
-        exec_result = _act(step, app, element, task_id)
+        exec_result = _act(req)
         sub_result["last_execution_result"] = exec_result
         dry = bool((exec_result.get("output") or {}).get("dry_run"))
         if dry:
@@ -195,15 +176,16 @@ def run_app_subgraph(app: str, node: str, steps: list, task_id: str,
             "step": step,
             # dry_run is recorded as dry_run — never as success. See _note_dry_run().
             "status": "dry_run" if dry else exec_result.get("status"),
-            "execution": {"action_type": exec_result.get("output", {}).get("action_type"),
+            "execution": {"action_type": req["action_type"],
                           "duration_ms": exec_result.get("duration_ms"),
                           "action_id": exec_result.get("action_id")},
-            "target": {"element_id": element["element_id"], "type": element["type"],
-                       "bbox_norm": element["bbox_norm"],        # [x,y,w,h] canonical
+            "target": {"element_id": element.get("element_id"), "type": element.get("type"),
+                       "bbox_norm": element.get("bbox_norm"),        # [x,y,w,h] canonical
                        "center_norm": element.get("center_norm"),
-                       "center_abs": element["center_abs"],
-                       "confidence": element["confidence"]},
-            "grounding": {"score": g["score"], "why": g["why"], "ambiguous": g.get("ambiguous")},
+                       "center_abs": element.get("center_abs"),
+                       "confidence": element.get("confidence")},
+            "decision": {"decider": decision["decider"], "why": decision["why"]},
+            "safety": {"decision": verdict["decision"], "mock": verdict.get("mock")},
             "quality": ctx["quality"]["score"],
         })
 
