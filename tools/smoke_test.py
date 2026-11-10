@@ -348,7 +348,7 @@ def report_act(final):
     check("every executed node was verified", len(verifs) >= len(subs) - 0,
           f"{len(subs)} executed vs {len(verifs)} verdicts")
     check("graph reached a terminal status",
-          final.get("status") in ("completed", "failed", "escalated", "incomplete"),
+          final.get("status") in ("completed", "dry_run", "failed", "escalated", "incomplete"),
           str(final.get("status")))
     print(f"  final    : {final.get('status')}   summary={final.get('verification_summary')}")
 

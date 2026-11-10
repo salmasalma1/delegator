@@ -61,9 +61,12 @@ def decide_action(step: str, app: str, node: str, ctx: dict, flag: str = None) -
         out = llm.chat_json(SYSTEM, user)
     except Exception as e:                                    # noqa: BLE001
         return {"status": "unresolved", "why": f"decider_error: {type(e).__name__}: {e}"}
+    return _from_model(out, ctx)
+
+
+def _from_model(out, ctx: dict) -> dict:
     if not isinstance(out, dict):
         return {"status": "unresolved", "why": "decider_not_an_object"}
-
     action = (out.get("action") or "").lower()
     why = out.get("why") or ""
     if action == "none":
@@ -99,3 +102,35 @@ def decide_action(step: str, app: str, node: str, ctx: dict, flag: str = None) -
 
     return {"status": "ok", "action": action, "element": element, "params": params,
             "why": why, "decider": "llm"}
+
+
+SYSTEM_LOOP = """You are the hands of a Windows desktop agent working on ONE sub-goal.
+You see the live screen and what you already did. Choose the NEXT single action.
+
+Allowed actions: click, type, press, save_file, create_folder, focus_window, finish.
+- click / type need "element_id" copied EXACTLY from the list. type also needs "text".
+- press needs "keys": a list like ["ctrl","s"].
+- save_file / create_folder need "path". focus_window needs nothing.
+- finish: the "done when" condition is visibly true on the CURRENT screen, or every hint is
+  accomplished. Do not finish just because you are out of ideas.
+- If it cannot be done from this screen, answer action "none" and say why.
+
+The hints are suggestions written before anyone saw the screen. Follow them when they fit; when
+the screen says otherwise, trust the screen. Never repeat an action that did not change anything.
+
+Answer ONLY JSON:
+{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "why": "short"}"""
+
+
+def decide_next(app: str, node: str, flag: str, hints: list, history: list, ctx: dict) -> dict:
+    """One iteration of the worker loop. Same output shape as decide_action; action may be 'finish'."""
+    user = (f"App: {app}\nSub-goal: {node}\nDone when: {flag}\n"
+            f"Hints: {hints}\nAlready done: {history or 'nothing yet'}\n\nScreen now:\n{to_prompt(ctx)}")
+    try:
+        out = llm.chat_json(SYSTEM_LOOP, user)
+    except Exception as e:                                    # noqa: BLE001
+        return {"status": "unresolved", "why": f"decider_error: {type(e).__name__}: {e}"}
+    if isinstance(out, dict) and str(out.get("action", "")).lower() == "finish":
+        return {"status": "ok", "action": "finish", "element": None, "params": {},
+                "why": out.get("why") or "", "decider": "llm"}
+    return _from_model(out, ctx)
