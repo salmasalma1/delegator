@@ -26,9 +26,3 @@ vendor/
 # --- local scratch ---------------------------------------------------------
 *.log
 graph_checkpoints.db
-
-# --- delivery artifacts: these are concatenations of the source above, kept
-#     outside the repo so a clone is source, not packing slips ---------------
-DEVIN_PHASE1_*.txt
-DEVIN_PROMPT*.txt
-EVERYTHING_SO_FAR.md
