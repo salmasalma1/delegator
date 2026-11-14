@@ -27,7 +27,7 @@ TaskRequest -> Director (plan) -> Plan check -> Delegate -> Worker -> Verify ste
 | `graph/safety_port.py` | The only door to the machine: frozen decision words (approved / rejected / needs_user_approval / blocked), approval scopes, run-bound approver, proposal hash. Team 3's Dispatcher plugs in via `NELLY_SAFETY_MODULE` (mock until then) |
 | `graph/nodes/verify.py`, `verifier.py` | Per-node verify (VLM on a fresh screenshot, rule fallback) and finalize |
 | `persistence/` | Checkpoint/audit seam: redaction, then Team 3's `db_helpers` store (shim fallback) |
-| `vision/` | Team 1 ScreenObservation 0.3 used as-is (`bbox_norm` = [x1,y1,x2,y2], `clickable`); `omar_adapter.py` is the only file that imports their package; quality gate; labelled FAKE screen when vision is not installed (dry runs only) |
+| `vision/` | Team 1 ScreenObservation 0.3 used as-is (`bbox_norm` = [x1,y1,x2,y2], `clickable`); `vision_adapter.py` is the only file that imports their package; quality gate; labelled FAKE screen when vision is not installed (dry runs only) |
 | `schemas/`, `specs/` | Frozen contracts and integration notes |
 | `tools/` | Smoke tests |
 

@@ -94,7 +94,7 @@ SIBLINGS = [
     "vision/validate.py",
     "vision/understand.py",
     "verifier.py",
-    "vision/omar_adapter.py",
+    "vision/vision_adapter.py",
     "schemas/safety/02_SafetyDecision.schema.json",
 ]
 
@@ -195,8 +195,8 @@ def ensure_store_path():
 def vision_identity():
     """Whose vision is actually running: Team 1's installed package, or our labelled FAKE screen."""
     try:
-        from vision import omar_adapter
-        if not omar_adapter.available():
+        from vision import vision_adapter
+        if not vision_adapter.available():
             return "fake", None
         import sys as _s
         mod = _s.modules.get("nelly_vision")

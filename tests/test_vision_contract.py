@@ -2,7 +2,7 @@ import sys, os
 sys.path.insert(0, ".")
 from vision.adapter import normalize, is_usable, fake_observation, failed_context, to_prompt
 from vision.validate import validate_observation
-from vision import omar_adapter
+from vision import vision_adapter
 import graph.subgraphs.app_subgraph as A
 
 def el(i, t="button", c=True, conf=.9, box=(.1,.1,.2,.2), text="x"):
@@ -39,18 +39,18 @@ assert not validate_observation({**obs([el("e1")]), "schema_version": "0.1"})[0]
 assert not validate_observation([])[0]
 
 # perceive_screen: not installed -> FAKE ; installed but crashes -> needs_review, NOT fake
-omar_adapter.available = lambda: False
+vision_adapter.available = lambda: False
 A.HAS_ADAPTER = False
 c = A.perceive_screen("Notepad", "Save"); assert c["vision_source"] == "fake" and c["detector"] == "fake"
 A.HAS_ADAPTER = True; os.environ.pop("NELLY_DRY_RUN", None)
 c = A.perceive_screen("Notepad", "Save"); assert c["needs_review"]      # live executor + fake screen = stop
-omar_adapter.available = lambda: True
+vision_adapter.available = lambda: True
 def boom(**k): raise RuntimeError("no gpu")
-omar_adapter.observe = boom
+vision_adapter.observe = boom
 c = A.perceive_screen("Notepad", "Save"); assert c["needs_review"] and c["error"] and c["vision_source"] != "fake" and not c["elements"]
-omar_adapter.observe = lambda **k: obs([el("e1")])
+vision_adapter.observe = lambda **k: obs([el("e1")])
 c = A.perceive_screen("Notepad", "Save"); assert c["vision_source"] == "nelly_vision" and not c["needs_review"]
-omar_adapter.observe = lambda **k: obs([el("e1", box=(.9,.9,.1,.1))])
+vision_adapter.observe = lambda **k: obs([el("e1", box=(.9,.9,.1,.1))])
 c = A.perceive_screen("Notepad", "Save"); assert c["needs_review"] and any("contract_violation" in w for w in c["warnings"])
 
 assert "e1 button" in to_prompt(normalize(obs([el("e1")])))
