@@ -1,6 +1,6 @@
-# Delegator — NELLY Orchestrator with Delegation
+# Orchestrator with Delegation
 
-Team 2 (orchestration and planning) of NELLY, a voice/text Windows desktop agent that works by looking at the
+orchestration and plannin of NELLY, a voice/text Windows desktop agent that works by lookin at the
 screen. The Orchestrator plans, a Delegator carries each sub-goal to a worker, the worker does it, and every
 sub-goal is verified before the next one starts.
 
