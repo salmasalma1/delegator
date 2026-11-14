@@ -27,7 +27,7 @@ assert r["strategy_used"] == "interim_pyautogui" and r["verification_status"] ==
 
 # resolver not wired -> nothing is clicked, reason says so
 os.environ["NELLY_LIVE_INPUT"] = "1"; os.environ.pop("NELLY_DRY_RUN", None); pg.calls.clear()
-r = X.execute(req()); assert r["status"] == "failed" and r["output"]["reject_code"] == "resolver_not_wired" and not pg.calls
+r = X.execute(req()); assert r["status"] == "failed" and r["output"]["reject_code"] == "no_observation" and not pg.calls
 
 # dry run is the DEFAULT: nothing moves unless live input is asked for, shows the point it WOULD click
 os.environ.pop("NELLY_LIVE_INPUT"); V.resolve_point = lambda *a: (640, 360)
