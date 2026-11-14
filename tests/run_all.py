@@ -9,7 +9,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.getcwd()
 ok = True
 for name in sorted(f for f in os.listdir(HERE) if f.startswith("test_")):
-    r = subprocess.run([sys.executable, os.path.join(HERE, name)], cwd=ROOT, capture_output=True, text=True)
+    r = subprocess.run([sys.executable, os.path.join(HERE, name)], cwd=ROOT, env={**os.environ, "NELLY_DRY_RUN": "1"}, capture_output=True, text=True)
     good = r.returncode == 0 and "OK" in r.stdout.splitlines()[-1:][0] if r.stdout.strip() else False
     print(("PASS " if good else "FAIL ") + name)
     if not good:

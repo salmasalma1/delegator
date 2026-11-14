@@ -1,4 +1,5 @@
 """langgraph refuses a node whose name is also a state key. The offline tests use a fake graph, so check it here."""
+import os as _o0; _o0.environ.setdefault("NELLY_DRY_RUN", "1")  # tests never move the real mouse
 import sys, re
 sys.path.insert(0, ".")
 from graph.state import AgentState
