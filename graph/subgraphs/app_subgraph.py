@@ -18,6 +18,7 @@ from vision.adapter import normalize, fallback_result
 from vision.validate import validate_vision_result
 import os
 import llm
+from graph import control
 from graph.action_decider import decide_action, decide_next
 from graph.safety_port import (get_safety, classify, proposal_hash, normalize_decision,
                                APPROVED, NEEDS_USER_APPROVAL)
@@ -233,6 +234,10 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
     history, sigs, shot = [], [], screenshot
 
     for _ in range(max_actions):
+        if control.cancelled():
+            sub_result["status"] = "cancelled"
+            sub_result["error"] = "cancelled by the user"
+            return sub_result
         ctx = perceive_screen(app, node, shot, scenario)
         if not _observe(sub_result, ctx):
             return sub_result
@@ -273,6 +278,10 @@ def _run_steps(app, node, steps, task_id, screenshot, scenario, flag) -> dict:
     sub_result = {"app": app, "node": node, "status": "running", "steps_done": [], "mode": "steps"}
     safety = get_safety()
     for step in steps:
+        if control.cancelled():
+            sub_result["status"] = "cancelled"
+            sub_result["error"] = "cancelled by the user"
+            return sub_result
         ctx = perceive_screen(app, step, screenshot, scenario)
         if not _observe(sub_result, ctx):
             return sub_result

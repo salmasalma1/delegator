@@ -12,7 +12,10 @@ TaskRequest -> Director (plan) -> Plan check -> Delegate -> Worker -> Verify ste
 
 | Path | Role |
 |---|---|
-| `gateway/gateway.py` | Voice (Whisper) or text -> normalized `TaskRequest` |
+| `gateway/gateway.py` | Text -> normalized `TaskRequest` (language detected); voice is a stub that refuses until Whisper is wired |
+| `gateway/session.py` | One conversation: stop command, answers to questions, new task per request, Ctrl+C |
+| `gateway/report.py` | End-of-task report in the user's language; never says "done" unless the state says so |
+| `graph/control.py` | The stop switch, checked between nodes and before every worker action |
 | `reasoning.py`, `planner.py` | The planner's brain (Qwen `qwen3-vl-plus`): request -> nodes with flags; validated, one self-correction, no silent fallback |
 | `graph/builder.py` | Wires the graph: director -> plan_check -> delegate -> verify_step -> (delegate / director / escalate / finalize) |
 | `graph/state.py` | `AgentState` (declare every new state key here) |
@@ -33,8 +36,11 @@ TaskRequest -> Director (plan) -> Plan check -> Delegate -> Worker -> Verify ste
 ```bash
 pip install -r requirements.txt
 cp .env.example .env          # then put your own DASHSCOPE_API_KEY in .env (never commit it)
-python run.py "your task"
+python run.py "your task"     # one task
+python run.py                 # interactive: type a task, "stop" or Ctrl+C stops it, "exit" leaves
 ```
+
+Input is text for now (voice is not wired). If a run ends with a question for you, your next message is the answer.
 
 With no `DASHSCOPE_API_KEY` the system still runs, but honestly: the planner cannot plan (it fails instead of
 guessing), the plan check and verifier are marked `skipped`/rule-only, and the worker uses the legacy
