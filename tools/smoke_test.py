@@ -94,8 +94,7 @@ SIBLINGS = [
     "vision/validate.py",
     "vision/understand.py",
     "verifier.py",
-    "config.py",
-    "schemas/vision/02_VisionResult.schema.json",
+    "vision/vision_adapter.py",
     "schemas/safety/02_SafetyDecision.schema.json",
 ]
 
