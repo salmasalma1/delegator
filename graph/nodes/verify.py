@@ -1,8 +1,14 @@
 from graph.state import AgentState
 from persistence import audit
+from graph import node_status as ns
 
-# step statuses that mean "nothing was really done on the machine"
-NOT_EXECUTED = ("dry_run", "unexecuted")
+NOT_EXECUTED = ns.NOT_EXECUTED      # step statuses that mean "nothing was really done on the machine"
+
+
+def _mark(state, idx, new, reason=""):
+    """Nodes list with nodes[idx] moved to `new` (only when it is in the status Verify expects)."""
+    nodes = state.get("nodes") or []
+    return ns.with_status(nodes, idx, new, reason, state.get("plan_round", 1))
 
 
 def _persist(state, out):
@@ -54,10 +60,16 @@ def verify_step_node(state: AgentState) -> dict:
              "round": state.get("plan_round", 1), "executed": executed, **verdict}
     verifications = (state.get("verifications") or []) + [entry]
 
+    # Node status: only Verify can say `verified`, and a dry run is never promoted.
+    cur = ns.status_of(node)
+    if cur == ns.SUCCEEDED:
+        nodes = _mark(state, idx, ns.VERIFIED if verdict["passed"] else ns.FAILED,
+                      "flag held" if verdict["passed"] else verdict["reason"])
+
     if verdict["passed"]:
         if state.get("current_node_idx", 0) < len(nodes):
-            return _persist(state, {"status": "delegating", "verifications": verifications})
-        return _persist(state, {"status": "verified", "verifications": verifications})
+            return _persist(state, {"status": "delegating", "verifications": verifications, "nodes": nodes})
+        return _persist(state, {"status": "verified", "verifications": verifications, "nodes": nodes})
 
     # Failed -> give the Brain one more shot, bounded.
     replans = state.get("replans", 0)
@@ -65,13 +77,15 @@ def verify_step_node(state: AgentState) -> dict:
     if replans < max_replans:
         return _persist(state, {
             "status": "replan",
+            "nodes": nodes,
             "verifications": verifications,
             "replans": replans + 1,
             "replan_reason": f"flag not met at node {idx}: {verdict['reason']}",
-            "failed_node": node,
+            "failed_node": nodes[idx],
         })
     return _persist(state, {
         "status": "escalate",
+        "nodes": nodes,
         "verifications": verifications,
         "escalation_reason": f"max_replans({max_replans}) exhausted at node {idx}: {verdict['reason']}",
         "requires_user": True,
@@ -90,7 +104,9 @@ def finalize_node(state: AgentState) -> dict:
 
     passed = sum(1 for v in recent if v.get("passed"))
     failed = [v for v in recent if not v.get("passed")]
-    covered = len({v["node"] for v in recent if v.get("passed")})
+    # nodes kept from an earlier round were verified there; count them if they are still in the final plan
+    plan_names = {n.get("node") for n in nodes}
+    covered = len({v["node"] for v in verifs if v.get("passed") and v["node"] in plan_names})
 
     never_ran = any(v.get("executed") is False for v in recent)
 
@@ -118,6 +134,8 @@ def finalize_node(state: AgentState) -> dict:
             "methods": sorted({v.get("method") for v in verifs}),
             "semantic": any(v.get("semantic") for v in verifs),
             "executed_all": not never_ran,
+            "node_statuses": [ns.status_of(n) for n in nodes],
+            "superseded": len(state.get("superseded_nodes") or []),
             "plan_check": (state.get("plan_check") or {}).get("method"),
         },
     }
