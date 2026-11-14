@@ -1,7 +1,7 @@
 """
 Generic App Sub-Graph — Hamlet Worker
 Reusable for any app. Delegated by Main.
-Calls Team 1 vision through vision.omar_adapter when it is installed; otherwise a loudly labelled
+Calls Team 1 vision through vision.vision_adapter when it is installed; otherwise a loudly labelled
 FAKE screen. Both go through vision.adapter so the worker sees ONE shape (Team 1's ScreenObservation 0.3).
 """
 from typing import TypedDict, Optional
@@ -16,7 +16,7 @@ except Exception:                                   # execution module not prese
 
 from vision.adapter import normalize, fake_observation, failed_context
 from vision.validate import validate_observation
-from vision import omar_adapter
+from vision import vision_adapter
 import os
 import llm
 from graph import control
@@ -44,7 +44,7 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
     * vision installed  -> real observation; a crash becomes needs_review (never a silent fake screen)
     * not installed     -> FAKE screen, labelled fake in detector + warnings (dry runs / tests only)
     """
-    if not omar_adapter.available():
+    if not vision_adapter.available():
         ctx = normalize(fake_observation(app, target), source="fake")
         # A fake screen may only feed a DRY run. With a real input backend it must stop, never click fake coordinates.
         live = HAS_ADAPTER and os.getenv("NELLY_DRY_RUN", "").lower() not in ("1", "true", "yes") \
@@ -54,7 +54,7 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
             ctx["warnings"].append("fake vision with a live executor: refusing to act (set NELLY_DRY_RUN=1)")
         return ctx
     try:
-        raw = omar_adapter.observe(screenshot=screenshot, target=target)
+        raw = vision_adapter.observe(screenshot=screenshot, target=target)
     except Exception as e:                                   # noqa: BLE001
         print(f"[Vision] failed: {type(e).__name__}: {e}")
         return failed_context(f"vision_error:{type(e).__name__}: {e}")
