@@ -1,40 +1,48 @@
-"""Run delegator — supports voice/text gateway"""
-from graph.builder import build_graph
-from gateway.gateway import normalize_task
+"""Run NELLY (text).
+
+    python run.py "your task"      one task, then exit
+    python run.py                  interactive: type a task; type stop / exit
+
+Ctrl+C stops the task before its next action.
+"""
 import os
 import sys
-import uuid
+
+from gateway.session import Session
 
 
-def run_task(text: str, source: str = "text"):
-    graph = build_graph()
-    init = normalize_task(text, source=source, task_id=str(uuid.uuid4()), session_id=str(uuid.uuid4()))
-    # Use thread_id for checkpoint
-    config = {"configurable": {"thread_id": init["session_id"]}}
-    result = None
-    # A person at the terminal can answer approvals. Headless runs have NO approver: the run pauses.
-    from graph import safety_port
-    asker = safety_port.console_approver if (sys.stdin.isatty() and not os.getenv("NELLY_NO_PROMPT")) else None
-    with safety_port.bind_approver(asker):
-        for event in graph.stream(init, config=config):
-            result = event
-            print(event)
-    # Final state
-    final = graph.get_state(config).values
-    print("\n=== FINAL ===")
-    print(f"Goal: {final.get('goal')}")
-    print(f"Status: {final.get('status')}")
-    print(f"Nodes: {final.get('nodes')}")
-    print(f"Sub results: {final.get('sub_results')}")
-    return final
+def _progress(event: dict):
+    for node in event:
+        print(f"  -> {node}")
+
+
+def main(argv):
+    quiet = os.getenv("NELLY_QUIET") == "1"
+    session = Session(on_event=None if quiet else _progress)
+
+    if argv:
+        out = session.submit(" ".join(argv))
+        print(out["text"])
+        status = out["report"]["status"]
+        return {"completed": 0, "dry_run": 3}.get(status, 1)      # a dry run is not a success
+
+    if not sys.stdin.isatty():
+        print("where is the task? usage: python run.py \"your task\"")
+        return 2
+
+    print("NELLY. Type a task. 'stop' or Ctrl+C stops it, 'exit' leaves.")
+    while True:
+        prompt = f"{session.pending['question']}\n> " if session.pending else "> "
+        try:
+            text = input(prompt)
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return 0
+        out = session.submit(text)
+        if out["kind"] == "exit":
+            return 0
+        print(out["text"])
 
 
 if __name__ == "__main__":
-    import sys
-    argv = sys.argv[1:]
-    if not argv:
-        
-        print('where is the task?')
-        
-        sys.exit(2)
-    run_task(" ".join(argv), source="text")
+    sys.exit(main(sys.argv[1:]))
