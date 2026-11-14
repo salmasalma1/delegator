@@ -56,7 +56,7 @@ llm.chat_json = lambda s, u, **k: {"ok": True}
 assert plan_check_node(st)["status"] == "delegating"
 def boom(*a, **k): raise llm.LLMUnavailable("x")
 llm.chat_json = boom
-o = plan_check_node(st); assert o["status"] == "delegating" and o["plan_check"]["method"] == "skipped"
+o = plan_check_node(st); assert o["status"] == "delegating" and o["plan_verdict"]["method"] == "skipped"
 
 # 7) whole graph: plan mismatch -> re-plan -> match -> execute -> final status honest (unexecuted)
 import graph.nodes.director as dr

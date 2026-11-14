@@ -43,14 +43,14 @@ def check_plan(goal: str, nodes: list) -> dict:
 def plan_check_node(state: AgentState) -> dict:
     verdict = check_plan(state.get("goal", ""), state.get("nodes") or [])
     if verdict["ok"]:
-        return {"status": "delegating", "plan_check": verdict}
+        return {"status": "delegating", "plan_verdict": verdict}
 
     why = f"plan does not match the request. missing={verdict['missing']} extra={verdict['extra']} ({verdict['reason']})"
     retries = state.get("plan_check_retries", 0)
     if retries < MAX_PLAN_RETRIES:
         # Nothing has run yet, so the director re-plans the WHOLE plan (its replan branch with
         # current_node_idx=0 keeps nothing). This does not spend the execution `replans` budget.
-        return {"status": "replan", "plan_check": verdict, "plan_check_retries": retries + 1,
+        return {"status": "replan", "plan_verdict": verdict, "plan_check_retries": retries + 1,
                 "replan_reason": why, "failed_node": None}
-    return {"status": "escalate", "plan_check": verdict, "requires_user": True,
+    return {"status": "escalate", "plan_verdict": verdict, "requires_user": True,
             "escalation_reason": why}
