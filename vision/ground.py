@@ -1,5 +1,5 @@
 """
-Grounding matcthe store's — turns ONE plan step ("type Hello NELLY") into ONE element
+Legacy grounding (no-model fallback) — turns ONE plan step ("type Hello NELLY") into ONE element
 from the vision module's grounding. No pixels, no clicks — just which element the step is about.
 
 Deterministic on purpose: cheap, debuggable, and it can say "I don't know".
@@ -9,15 +9,17 @@ to the Brain/VLM for re-grounding — it must never silently pick element[0].
 import re
 from typing import Optional, Tuple
 
+from vision.adapter import is_usable
+
 STOP = {"the", "a", "an", "in", "on", "to", "of", "and", "then", "please", "with", "into"}
 
 # step verb -> element types it can target (ordered by preference)
 AFFINITY = {
-    "type": ["text_area", "text_input", "edit", "textbox", "text_field", "document"],
+    "type": ["input", "text_area", "text_input", "edit", "textbox", "text_field", "document"],
     "write": ["text_area", "text_input", "edit", "textbox", "text_field", "document"],
     "enter": ["text_area", "text_input", "edit", "textbox", "text_field", "search"],
     "paste": ["text_area", "text_input", "edit", "textbox", "text_field"],
-    "click": ["button", "menu", "menu_item", "tab", "icon", "link", "checkbox", "toggle"],
+    "click": ["button", "menu", "tab", "checkbox", "link", "menu_item", "tab", "icon", "link", "checkbox", "toggle"],
     "press": ["button", "menu", "menu_item", "tab", "icon", "link", "key"],
     "open": ["button", "icon", "menu", "menu_item", "tab", "link", "list_item"],
     "select": ["menu_item", "list_item", "tab", "option", "checkbox", "radio"],
@@ -48,12 +50,10 @@ def _verb(step: str) -> Optional[str]:
 
 
 def score(step: str, el: dict) -> Tuple[float, list]:
-    """Higthe store's = better fit. Returns (score, why)."""
+    """Higher = better fit. Returns (score, why)."""
     why, s = [], 0.0
-    if not el.get("interactable", False):
-        return -1.0, ["not interactable"]
-    if el.get("confirmed") is False or el.get("ambiguous") is True:
-        return -1.0, ["unconfirmed_by_t1"]   # vision says the mark is not evidence-backed
+    if not is_usable(el):
+        return -1.0, ["not usable (clickable=False or not an interactive type)"]
 
     step_tok = _tokens(step)
     el_tok = _tokens(el.get("text"))
