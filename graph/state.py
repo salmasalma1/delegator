@@ -34,6 +34,7 @@ class AgentState(TypedDict, total=False):
     escalation: Optional[dict]
     latency_ms: Optional[int]
     plan_round: int
+    superseded_nodes: list            # nodes a replan replaced (kept for the audit)
     plan_check: Optional[dict]        # verdict of the pre-execution plan check
     plan_check_retries: int
     requires_user: bool
