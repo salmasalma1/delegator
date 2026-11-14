@@ -73,6 +73,22 @@ def resolve_point(element_id, bbox_norm, observation_id=None):
     (x, y) screen pixels for ONE element, from Team 1's CoordinateManager.resolve_target_point().
     Uses the last observation seen by observe() (kept in _last). Never computes pixels from the box itself.
     Must raise TargetRejected(code=...) when Team 1 refuses (stale, window_gone, window_resized, off_screen...).
-    NOT WIRED YET: needs the real CoordinateManager signature.
+
+    Team 1: CoordinateManager().resolve_target_point(obs, element_id=None, *, bbox_norm=None, anchor=None,
+    now=None) -> ScreenPoint (virtual-desktop physical px). element_id wins over bbox_norm when both are given.
+    Their codes: dpi_unaware, stale (default max age 15 s from obs.captured_at), unknown_element, no_target,
+    invalid_bbox, frame_mismatch, window_gone, window_minimized, window_resized, off_screen, off_window.
+    Ours (no Team 1 call made): no_observation, observation_mismatch.
     """
-    raise NotImplementedError("resolve_point is not wired to nelly_vision.CoordinateManager yet")
+    last = _last[0]
+    if last is None:
+        raise TargetRejected("no observation yet: call observe() before resolving a point", code="no_observation")
+    if observation_id is not None and observation_id != last["screenshot_id"]:
+        raise TargetRejected(f"observation {observation_id!r} is not the last one seen "
+                             f"({last['screenshot_id']!r}): re-perceive", code="observation_mismatch")
+    from nelly_vision import CoordinateManager, TargetRejected as VisionRejected   # noqa: PLC0415
+    try:
+        point = CoordinateManager().resolve_target_point(last["observation"], element_id, bbox_norm=bbox_norm)
+    except VisionRejected as e:
+        raise TargetRejected(str(e), code=e.code) from e
+    return point.x, point.y
