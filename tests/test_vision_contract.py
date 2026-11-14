@@ -45,7 +45,7 @@ assert not validate_observation([])[0]
 vision_adapter.available = lambda: False
 A.HAS_ADAPTER = False
 c = A.perceive_screen("Notepad", "Save"); assert c["vision_source"] == "fake" and c["detector"] == "fake"
-A.HAS_ADAPTER = True; os.environ.pop("NELLY_DRY_RUN", None)
+A.HAS_ADAPTER = True; os.environ["NELLY_LIVE_INPUT"] = "1"; os.environ.pop("NELLY_DRY_RUN", None)
 c = A.perceive_screen("Notepad", "Save"); assert c["needs_review"]      # live executor + fake screen = stop
 vision_adapter.available = lambda: True
 def boom(**k): raise RuntimeError("no gpu")
