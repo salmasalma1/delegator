@@ -39,7 +39,20 @@ def _get():
 
 
 def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
+    """One screen -> ScreenObservation 0.3 as a JSON-able dict. Raises on any failure.
+    `screenshot` is a path / PIL image; None captures the real screen (monitor of the foreground window)."""
+    from nelly_vision.capture import capture_screen, new_screenshot_id   # noqa: PLC0415
     p = _get()
-    obs = p.observe(screenshot=screenshot, allow_vlm=allow_vlm) if screenshot is not None \
-        else p.observe(allow_vlm=allow_vlm)
-    return obs.model_dump() if hasattr(obs, "model_dump") else (obs.dict() if hasattr(obs, "dict") else obs)
+    if screenshot is None:
+        image, screen, window = capture_screen()
+    else:
+        image, screen, window = screenshot, None, None
+    res = p.perceive_detailed(image, target=target, screen=screen, window=window,
+                              screenshot_id=new_screenshot_id(), allow_vlm=allow_vlm)
+    obs = getattr(res, "observation", None)
+    if obs is None:
+        raise RuntimeError("nelly_vision returned no observation")
+    data = obs.model_dump(mode="json")
+    if data.get("schema_version") != "0.3":
+        raise ValueError(f"expected ScreenObservation 0.3, got schema_version={data.get('schema_version')!r}")
+    return data
