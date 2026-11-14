@@ -27,6 +27,7 @@ TaskRequest -> Director (plan) -> Plan check -> Delegate -> Worker -> Verify ste
 | `graph/safety_port.py` | The only door to the machine: frozen decision words (approved / rejected / needs_user_approval / blocked), approval scopes, run-bound approver, proposal hash. Team 3's Dispatcher plugs in via `NELLY_SAFETY_MODULE` (mock until then) |
 | `graph/nodes/verify.py`, `verifier.py` | Per-node verify (VLM on a fresh screenshot, rule fallback) and finalize |
 | `persistence/` | Checkpoint/audit seam: redaction, then Team 3's `db_helpers` store (shim fallback) |
+| `execution/desktop_adapter.py` | INTERIM executor (click / type / press via pyautogui) until Team 1 delivers theirs. **Dry run by default**; real input only with `NELLY_LIVE_INPUT=1`. Never computes pixels itself: the click point comes from Team 1's coordinate manager (`vision_adapter.resolve_point`, not wired yet). Mouse to a screen corner = stop |
 | `vision/` | Team 1 ScreenObservation 0.3 used as-is (`bbox_norm` = [x1,y1,x2,y2], `clickable`); `vision_adapter.py` is the only file that imports their package; quality gate; labelled FAKE screen when vision is not installed (dry runs only) |
 | `schemas/`, `specs/` | Frozen contracts and integration notes |
 | `tools/` | Smoke tests |

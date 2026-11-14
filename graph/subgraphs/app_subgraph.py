@@ -47,11 +47,11 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
     if not vision_adapter.available():
         ctx = normalize(fake_observation(app, target), source="fake")
         # A fake screen may only feed a DRY run. With a real input backend it must stop, never click fake coordinates.
-        live = HAS_ADAPTER and os.getenv("NELLY_DRY_RUN", "").lower() not in ("1", "true", "yes") \
+        live = HAS_ADAPTER and desktop_adapter.live_requested() \
             and os.getenv("NELLY_ALLOW_FAKE_VISION", "") != "1"
         ctx["needs_review"] = live
         if live:
-            ctx["warnings"].append("fake vision with a live executor: refusing to act (set NELLY_DRY_RUN=1)")
+            ctx["warnings"].append("fake vision with a live executor: refusing to act (unset NELLY_LIVE_INPUT)")
         return ctx
     try:
         raw = vision_adapter.observe(screenshot=screenshot, target=target)
@@ -75,7 +75,7 @@ def _note_dry_run():
     if _dry_noted[0]:
         return
     _dry_noted[0] = True
-    print("[execution] DRY RUN — no input backend (pyautogui missing or NELLY_DRY_RUN set).")
+    print("[execution] DRY RUN — nothing is clicked or typed (set NELLY_LIVE_INPUT=1 to act for real).")
     print("            Steps are recorded as 'dry_run', never as 'success'.")
 
 
@@ -93,6 +93,7 @@ def _build_request(decision: dict, app: str, task_id: str) -> dict:
         "parameters": decision["params"],
         "application": app,
         "strategy": "vision_fallback",
+        "observation_id": decision.get("observation_id"),
     }
 
 
@@ -113,6 +114,7 @@ def _act(req: dict) -> dict:
     return res
 
 
+REGROUND_CODES = ("stale", "window_resized", "window_gone", "window_minimized", "off_window", "stale_target")
 MAX_ACTIONS = int(os.getenv("NELLY_MAX_ACTIONS", "8"))     # the worker's leash per sub-goal
 STUCK_AFTER = 3                                             # same action this many times in a row = stuck
 
@@ -131,6 +133,7 @@ def _record_action(sub_result: dict, req: dict, verdict: dict, element: dict,
         "result_status": (exec_result or {}).get("status") if ran else "not_run",
         "screenshot_ref": (exec_result or {}).get("screenshot_after_ref") if ran else None,
         "latency_ms": (exec_result or {}).get("duration_ms") if ran else None,
+        "reject_code": ((exec_result or {}).get("output") or {}).get("reject_code") if ran else None,
     })
 
 
@@ -171,7 +174,10 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
     if dry:
         _note_dry_run()
     elif exec_result.get("status") in ("failed", "blocked", "cancelled"):
-        sub_result["status"] = "failed"
+        code = (exec_result.get("output") or {}).get("reject_code")
+        # Team 1 refused the click because the picture is out of date: look again, do not call it a failure
+        sub_result["status"] = ("cancelled" if exec_result.get("status") == "cancelled"
+                                else "needs_regrounding" if code in REGROUND_CODES else "failed")
         sub_result["error"] = f"execution {exec_result.get('status')}: {exec_result.get('error')}"
         return False, exec_result
 
@@ -231,6 +237,7 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
             return sub_result
 
         decision = decide_next(app, node, flag, hints, history, ctx)
+        decision["observation_id"] = ctx.get("screenshot_id")
         if decision["status"] != "ok":
             sub_result["status"] = "needs_regrounding"
             sub_result["error"] = f"step_not_resolved: {node!r} ({decision['why']})"
@@ -274,6 +281,7 @@ def _run_steps(app, node, steps, task_id, screenshot, scenario, flag) -> dict:
         if not _observe(sub_result, ctx):
             return sub_result
         decision = decide_action(step, app, node, ctx, flag=flag)
+        decision["observation_id"] = ctx.get("screenshot_id")
         if decision["status"] != "ok":
             sub_result["status"] = "needs_regrounding"
             sub_result["error"] = f"step_not_resolved: {step!r} ({decision['why']})"

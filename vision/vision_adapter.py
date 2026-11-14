@@ -14,6 +14,14 @@ Rules:
 import os
 
 _perceiver = [None]
+_last = [None]                  # the last observation object (the coordinate manager needs it, not a dict)
+
+
+class TargetRejected(Exception):
+    """Team 1 refused a click point. `.code` is their reason: stale, window_gone, window_resized, off_screen..."""
+    def __init__(self, message="rejected", code="rejected"):
+        super().__init__(message)
+        self.code = code
 
 
 def _import_perceiver():
@@ -55,4 +63,16 @@ def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
     data = obs.model_dump(mode="json")
     if data.get("schema_version") != "0.3":
         raise ValueError(f"expected ScreenObservation 0.3, got schema_version={data.get('schema_version')!r}")
+    # what the coordinate manager needs later to turn a box into a click point
+    _last[0] = {"observation": obs, "screen": screen, "window": window, "screenshot_id": data.get("screenshot_id")}
     return data
+
+
+def resolve_point(element_id, bbox_norm, observation_id=None):
+    """
+    (x, y) screen pixels for ONE element, from Team 1's CoordinateManager.resolve_target_point().
+    Uses the last observation seen by observe() (kept in _last). Never computes pixels from the box itself.
+    Must raise TargetRejected(code=...) when Team 1 refuses (stale, window_gone, window_resized, off_screen...).
+    NOT WIRED YET: needs the real CoordinateManager signature.
+    """
+    raise NotImplementedError("resolve_point is not wired to nelly_vision.CoordinateManager yet")

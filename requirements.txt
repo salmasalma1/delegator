@@ -4,3 +4,7 @@ python-dotenv==1.2.4
 jsonschema==4.26.0
 requests==2.34.2
 openai==3.37.0
+
+# interim executor (execution/desktop_adapter.py); only needed for real clicks
+pyautogui>=0.9.54
+pyperclip>=1.8   # optional: typing non-ASCII text (Arabic)
