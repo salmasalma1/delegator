@@ -16,8 +16,7 @@ import re
 MASK = "[REDACTED]"
 _SECRET_KEY = re.compile(r"pass(word|wd)?|secret|token|api[_-]?key|authorization|cookie|credential", re.I)
 _SECRET_VAL = re.compile(r"(sk-[A-Za-z0-9_\-]{16,}|Bearer\s+[A-Za-z0-9._\-]{8,})")
-_KEEP_ELEMENT = ("element_id", "type", "bbox", "bbox_norm", "center_abs", "center_norm",
-                 "confidence", "interactable", "source", "confirmed", "ambiguous")
+_KEEP_ELEMENT = ("id", "element_id", "type", "bbox_norm", "confidence", "clickable", "source")
 _MAX_DEPTH = 12
 
 

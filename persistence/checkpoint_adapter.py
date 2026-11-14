@@ -54,7 +54,7 @@ def backend_name() -> str:
 def _bbox_json(bbox_norm) -> Optional[str]:
     if not bbox_norm or len(bbox_norm) != 4:
         return None
-    return json.dumps([round(float(v), 4) for v in bbox_norm])   # [x, y, w, h] everywhere
+    return json.dumps([round(float(v), 4) for v in bbox_norm])   # Team 1 format [x1, y1, x2, y2] everywhere
 
 
 def _fill_missing_rows(db_path: str, checkpoint_id: str, state: dict) -> dict:

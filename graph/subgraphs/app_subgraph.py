@@ -1,8 +1,8 @@
 """
 Generic App Sub-Graph — Hamlet Worker
 Reusable for any app. Delegated by Main.
-Calls REAL Vision (nelly_vision.perception) if available, else fallback — both normalized
-through vision.adapter so the worker sees ONE shape.
+Calls Team 1 vision through vision.omar_adapter when it is installed; otherwise a loudly labelled
+FAKE screen. Both go through vision.adapter so the worker sees ONE shape (Team 1's ScreenObservation 0.3).
 """
 from typing import TypedDict, Optional
 import uuid
@@ -14,8 +14,9 @@ except Exception:                                   # execution module not prese
     desktop_adapter = None
     HAS_ADAPTER = False
 
-from vision.adapter import normalize, fallback_result
-from vision.validate import validate_vision_result
+from vision.adapter import normalize, fake_observation, failed_context
+from vision.validate import validate_observation
+from vision import omar_adapter
 import os
 import llm
 from graph import control
@@ -36,46 +37,34 @@ class AppSubState(TypedDict, total=False):
     error: Optional[str]
 
 
-# ---- Vision Adapter (Real if available) ----
-try:
-    from config import ensure_vision_path
-    ensure_vision_path()          # the vision module's folder can be moved/renamed; package name stays
-except Exception:
-    pass
-
-try:
-    from nelly_vision.perception import perceive as real_perceive  # the vision module's vision handoff
-    HAS_REAL_VISION = True
-except ImportError:
-    HAS_REAL_VISION = False
-    real_perceive = None
-
-
-def _accepts(fn, kw: str) -> bool:
-    import inspect
-    try:
-        return kw in inspect.signature(fn).parameters
-    except (TypeError, ValueError):
-        return False
-
-
+# ---- Vision (Team 1) ----
 def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None) -> dict:
-    """Unified entry -> normalized grounding context (Top-30, quality gated)."""
-    if HAS_REAL_VISION:
-        try:
-            # the vision module's real perceive(screenshot) has no scenario kwarg -> only pass it to test doubles.
-            raw = real_perceive(screenshot, scenario=scenario) if _accepts(real_perceive, "scenario") \
-                else real_perceive(screenshot)
-            ok, errs = validate_vision_result(raw)
-            if not ok:
-                print(f"[Vision] contract violation from vision: {errs[:3]}")
-            ctx = normalize(raw, source="nelly_vision")
-            if not ok:
-                ctx["warnings"].append(f"contract_violation:{errs[:2]}")
-            return ctx
-        except Exception as e:  # never let vision break the worker
-            print(f"[Vision fallback] real failed: {e}")
-    return normalize(fallback_result(app, target), source="fallback")
+    """
+    Unified entry -> normalized screen context (quality gated).
+    * vision installed  -> real observation; a crash becomes needs_review (never a silent fake screen)
+    * not installed     -> FAKE screen, labelled fake in detector + warnings (dry runs / tests only)
+    """
+    if not omar_adapter.available():
+        ctx = normalize(fake_observation(app, target), source="fake")
+        # A fake screen may only feed a DRY run. With a real input backend it must stop, never click fake coordinates.
+        live = HAS_ADAPTER and os.getenv("NELLY_DRY_RUN", "").lower() not in ("1", "true", "yes") \
+            and os.getenv("NELLY_ALLOW_FAKE_VISION", "") != "1"
+        ctx["needs_review"] = live
+        if live:
+            ctx["warnings"].append("fake vision with a live executor: refusing to act (set NELLY_DRY_RUN=1)")
+        return ctx
+    try:
+        raw = omar_adapter.observe(screenshot=screenshot, target=target)
+    except Exception as e:                                   # noqa: BLE001
+        print(f"[Vision] failed: {type(e).__name__}: {e}")
+        return failed_context(f"vision_error:{type(e).__name__}: {e}")
+    ok, errs = validate_observation(raw)
+    ctx = normalize(raw, source="nelly_vision")
+    if not ok:
+        print(f"[Vision] contract violation: {errs[:3]}")
+        ctx["warnings"].append(f"contract_violation:{errs[:2]}")
+        ctx["needs_review"] = True
+    return ctx
 
 
 _dry_noted = [False]
@@ -100,7 +89,7 @@ def _build_request(decision: dict, app: str, task_id: str) -> dict:
         "risk_level": risk,
         "reversible": reversible,
         "action_type": decision["action"],
-        "target_element_id": element.get("element_id"),
+        "target_element_id": element.get("id"),
         "parameters": decision["params"],
         "application": app,
         "strategy": "vision_fallback",
@@ -133,7 +122,7 @@ def _record_action(sub_result: dict, req: dict, verdict: dict, element: dict,
     """One row per proposed action (the action level; the node level is the plan node itself)."""
     sub_result.setdefault("actions", []).append({
         "action_id": req["action_id"], "task_id": req["task_id"],
-        "action_type": req["action_type"], "element_id": element.get("element_id"),
+        "action_type": req["action_type"], "element_id": element.get("id"),
         "risk_level": verdict.get("risk_level") or req.get("risk_level"),
         "decision": verdict.get("decision"), "reason": verdict.get("reason"),
         "policy_id": verdict.get("policy_id"), "policy_mode": verdict.get("policy_mode"),
@@ -192,10 +181,9 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
         "execution": {"action_type": req["action_type"],
                       "duration_ms": exec_result.get("duration_ms"),
                       "action_id": exec_result.get("action_id")},
-        "target": {"element_id": element.get("element_id"), "type": element.get("type"),
-                   "bbox_norm": element.get("bbox_norm"),            # [x,y,w,h] canonical
-                   "center_norm": element.get("center_norm"),
-                   "center_abs": element.get("center_abs"),
+        "target": {"element_id": element.get("id"), "type": element.get("type"),
+                   "bbox_norm": element.get("bbox_norm"),            # Team 1: [x1, y1, x2, y2], 0..1
+                   "clickable": element.get("clickable"),
                    "confidence": element.get("confidence")},
         "decision": {"decider": decision["decider"], "why": decision["why"]},
         "safety": {"decision": verdict["decision"], "mock": verdict.get("mock"),
@@ -219,7 +207,7 @@ def _observe(sub_result: dict, ctx: dict) -> bool:
 
 def _sig(decision: dict) -> tuple:
     p = decision["params"]
-    return (decision["action"], (decision.get("element") or {}).get("element_id"),
+    return (decision["action"], (decision.get("element") or {}).get("id"),
             p.get("text"), tuple(p.get("keys") or ()), p.get("path"))
 
 
@@ -264,7 +252,7 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
         if not ok:
             return sub_result
         history.append(f"{len(history) + 1}. {decision['action']} "
-                       f"{(decision.get('element') or {}).get('element_id') or ''} {decision['why']}".strip())
+                       f"{(decision.get('element') or {}).get('id') or ''} {decision['why']}".strip())
         # look at the screen the executor just left, when it gives one
         shot = (exec_result or {}).get("screenshot_after_ref") or screenshot
 
