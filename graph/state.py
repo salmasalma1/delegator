@@ -38,7 +38,7 @@ class AgentState(TypedDict, total=False):
     cancelled: bool                   # the user stopped the run
     language: str                     # ar | en, of the user's request
     actions: list                     # action level: one row per proposed action (decision, approval, result)
-    plan_check: Optional[dict]        # verdict of the pre-execution plan check
+    plan_verdict: Optional[dict]       # verdict of the pre-execution plan check
     plan_check_retries: int
     requires_user: bool
     after_screenshot: Optional[str]   # post-action screenshot path for the VLM verifier
