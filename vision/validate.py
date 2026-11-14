@@ -34,6 +34,7 @@ def validate_observation(raw) -> Tuple[bool, list]:
             errs.append(f"elements[{i}] bbox_norm is not 4 numbers")
         elif not (0 <= b[0] < b[2] <= 1 and 0 <= b[1] < b[3] <= 1):
             errs.append(f"elements[{i}] bbox_norm not [x1,y1,x2,y2] inside 0..1: {b}")
-        if e.get("clickable") not in (True, False, "unknown"):
-            errs.append(f"elements[{i}] clickable must be true/false/'unknown'")
+        # Team 1: clickable is bool | None (None = not sure). "unknown" is accepted as the same thing.
+        if e.get("clickable") not in (True, False, None, "unknown"):
+            errs.append(f"elements[{i}] clickable must be true/false/null")
     return (not errs), errs

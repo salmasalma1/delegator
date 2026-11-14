@@ -3,7 +3,7 @@ Vision adapter — the orchestrator side of the Team 1 vision boundary.
 
 The contract is Team 1's ScreenObservation (v0.3). We do NOT rename its fields or convert its boxes:
 elements keep their own names (`id`, `type`, `text`, `bbox_norm` = [x1, y1, x2, y2] as 0..1 fractions
-of the screenshot, `confidence`, `clickable` = True | False | "unknown", `source`, `provenance`...).
+of the screenshot, `confidence`, `clickable` = True | False | None (None = not sure), `source`, `provenance`...).
 
 What this module adds is only ours:
   1. a deterministic QUALITY GATE: is this screen trustworthy enough to act on? If not, the worker
@@ -21,7 +21,7 @@ TOP_N = 30
 
 # Element types Team 1's contract allows (v0.3).
 ELEMENT_TYPES = ("text", "icon", "button", "input", "checkbox", "link", "menu_item", "tab", "image", "other")
-# `clickable` can be "unknown" (no evidence either way). We may TRY these types anyway, because
+# `clickable` can be None (Team 1: not sure; the string "unknown" is treated the same). We may TRY these types anyway, because
 # controls of these kinds are meant to be pressed; Verify checks the screen afterwards.
 INTERACTIVE_TYPES = ("button", "link", "input", "checkbox", "menu_item", "tab")
 
@@ -36,13 +36,14 @@ def is_usable(el: dict) -> bool:
     May the worker act on this element?
       clickable True      -> yes
       clickable False     -> no
-      clickable "unknown" -> only for interactive types (we try, then Verify looks at the screen)
+      clickable None      -> only for interactive types (we try, then Verify looks at the screen)
     """
     c = el.get("clickable")
     if c is True:
         return True
     if c is False:
         return False
+    # None or "unknown": no evidence either way
     return (el.get("type") or "") in INTERACTIVE_TYPES
 
 

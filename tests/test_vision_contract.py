@@ -14,6 +14,9 @@ def obs(els, det="yolo", win=True, **k):
 # usable rule
 assert is_usable(el("a", c=True)) and not is_usable(el("a", c=False))
 assert is_usable(el("a", "button", "unknown")) and not is_usable(el("a", "text", "unknown"))
+assert is_usable(el("a", "button", None)) and not is_usable(el("a", "text", None))      # Team 1 sends null
+assert validate_observation(obs([el("e1", c=None)]))[0] and validate_observation(obs([el("e1", c="unknown")]))[0]
+assert not validate_observation(obs([el("e1", c="maybe")]))[0]
 
 # good screen: kept as Team 1 names it, ordered usable first
 ctx = normalize(obs([el("e1", "text", False), el("e2")]))
