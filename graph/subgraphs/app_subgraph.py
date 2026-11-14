@@ -19,7 +19,8 @@ from vision.validate import validate_vision_result
 import os
 import llm
 from graph.action_decider import decide_action, decide_next
-from graph.safety_port import get_safety
+from graph.safety_port import (get_safety, classify, proposal_hash, normalize_decision,
+                               APPROVED, NEEDS_USER_APPROVAL)
 
 
 class AppSubState(TypedDict, total=False):
@@ -91,9 +92,12 @@ def _note_dry_run():
 def _build_request(decision: dict, app: str, task_id: str) -> dict:
     """The ONE frozen ExecutionRequest. Safety sees exactly this; the executor runs exactly this."""
     element = decision.get("element") or {}
+    risk, reversible = classify(decision["action"])      # static table; the real Safety may override
     return {
         "action_id": str(uuid.uuid4()),
         "task_id": task_id,
+        "risk_level": risk,
+        "reversible": reversible,
         "action_type": decision["action"],
         "target_element_id": element.get("element_id"),
         "parameters": decision["params"],
@@ -123,6 +127,23 @@ MAX_ACTIONS = int(os.getenv("NELLY_MAX_ACTIONS", "8"))     # the worker's leash 
 STUCK_AFTER = 3                                             # same action this many times in a row = stuck
 
 
+def _record_action(sub_result: dict, req: dict, verdict: dict, element: dict,
+                   exec_result: dict = None, ran: bool = False):
+    """One row per proposed action (the action level; the node level is the plan node itself)."""
+    sub_result.setdefault("actions", []).append({
+        "action_id": req["action_id"], "task_id": req["task_id"],
+        "action_type": req["action_type"], "element_id": element.get("element_id"),
+        "risk_level": verdict.get("risk_level") or req.get("risk_level"),
+        "decision": verdict.get("decision"), "reason": verdict.get("reason"),
+        "policy_id": verdict.get("policy_id"), "policy_mode": verdict.get("policy_mode"),
+        "approval_id": verdict.get("approval_id"), "approval_scope": verdict.get("approval_scope"),
+        "proposal_hash": verdict.get("proposal_hash"), "mock": verdict.get("mock"),
+        "result_status": (exec_result or {}).get("status") if ran else "not_run",
+        "screenshot_ref": (exec_result or {}).get("screenshot_after_ref") if ran else None,
+        "latency_ms": (exec_result or {}).get("duration_ms") if ran else None,
+    })
+
+
 def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, ctx: dict, label: str):
     """
     SAFETY then ACT for one decided action, and record it.
@@ -131,20 +152,31 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
     element = decision.get("element") or {}
     req = _build_request(decision, app, task_id)
 
-    verdict = safety.check(req)
+    verdict = normalize_decision(safety.check(req))      # whatever it returns, only the frozen words count
     sub_result["last_safety_decision"] = verdict
-    if verdict["decision"] == "needs_approval":
+    if verdict["decision"] == NEEDS_USER_APPROVAL:
+        _record_action(sub_result, req, verdict, element)
         sub_result["status"] = "needs_approval"
         sub_result["error"] = f"approval needed: {verdict.get('reason')}"
         sub_result["proposed_action"] = req              # frozen: what the user would approve
         return False, None
-    if verdict["decision"] != "approved":
+    if verdict["decision"] != APPROVED:
+        _record_action(sub_result, req, verdict, element)
         sub_result["status"] = "failed"
         sub_result["error"] = f"safety {verdict['decision']}: {verdict.get('reason')}"
         return False, None
 
+    # what runs must be exactly what was approved
+    approved_hash = verdict.get("proposal_hash")
+    if approved_hash and approved_hash != proposal_hash(req):
+        _record_action(sub_result, req, verdict, element)
+        sub_result["status"] = "failed"
+        sub_result["error"] = "request changed after it was approved; not executed"
+        return False, None
+
     exec_result = _act(req)
     sub_result["last_execution_result"] = exec_result
+    _record_action(sub_result, req, verdict, element, exec_result, ran=True)
     dry = bool((exec_result.get("output") or {}).get("dry_run"))
     if dry:
         _note_dry_run()
@@ -165,7 +197,8 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
                    "center_abs": element.get("center_abs"),
                    "confidence": element.get("confidence")},
         "decision": {"decider": decision["decider"], "why": decision["why"]},
-        "safety": {"decision": verdict["decision"], "mock": verdict.get("mock")},
+        "safety": {"decision": verdict["decision"], "mock": verdict.get("mock"),
+                   "approval_scope": verdict.get("approval_scope")},
         "quality": ctx["quality"]["score"],
     })
     return True, exec_result
