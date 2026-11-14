@@ -1,3 +1,4 @@
+import os as _o0; _o0.environ.setdefault("NELLY_DRY_RUN", "1")  # tests never move the real mouse
 import sys, types, os
 sys.path.insert(0, ".")
 os.environ["NELLY_PERSIST"] = "0"; os.environ["NELLY_VERIFIER"] = "rule"
@@ -10,6 +11,7 @@ ELS = [{"id": "e_edit", "type": "input", "text": "", "bbox_norm": [0.1,0.2,0.5,0
         "clickable": True, "source": "fast"}]
 CTX = {"app": "X", "elements": ELS, "needs_review": False, "vision_source": "t", "warnings": [],
        "quality": {"score": .9, "reasons": []}, "status": "ok", "window_title": "w"}
+app_sub.HAS_ADAPTER = False        # this test is about the no-executor honesty path
 app_sub.perceive_screen = lambda *a, **k: CTX
 llm.available = lambda: True
 

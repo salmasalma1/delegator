@@ -1,3 +1,4 @@
+import os as _o0; _o0.environ.setdefault("NELLY_DRY_RUN", "1")  # tests never move the real mouse
 import sys, os, types
 sys.path.insert(0, ".")
 os.environ["NELLY_PERSIST"] = "0"
