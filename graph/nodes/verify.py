@@ -142,6 +142,6 @@ def finalize_node(state: AgentState) -> dict:
             "executed_all": not never_ran,
             "node_statuses": [ns.status_of(n) for n in nodes],
             "superseded": len(state.get("superseded_nodes") or []),
-            "plan_check": (state.get("plan_check") or {}).get("method"),
+            "plan_check": (state.get("plan_verdict") or {}).get("method"),
         },
     }
