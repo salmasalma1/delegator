@@ -29,8 +29,13 @@ def delegate_node(state: AgentState) -> dict:
     final = ns.worker_to_node_status(result)
     nodes = ns.with_status(nodes, idx, final, result.get("error") or result.get("finish_reason") or "", rnd)
 
+    # action level: tag each action row with the node and plan round it belongs to
+    node_id = node.get("id")
+    new_actions = [{**a, "node_id": node_id, "round": rnd} for a in (result.get("actions") or [])]
+
     return {
         "nodes": nodes,
+        "actions": (state.get("actions") or []) + new_actions,
         "after_screenshot": after,
         "status": "executed",
         "latency_ms": int((time.time() - t0) * 1000),
