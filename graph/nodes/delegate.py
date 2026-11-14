@@ -2,6 +2,7 @@ import time
 
 from graph.state import AgentState
 from graph import node_status as ns
+from graph import control
 from graph.subgraphs.app_subgraph import run_app_subgraph
 
 
@@ -14,12 +15,16 @@ def delegate_node(state: AgentState) -> dict:
 
     node = nodes[idx]
     t0 = time.time()
-    result = run_app_subgraph(
-        app=node.get("app", "Notepad"), node=node.get("node", ""),
-        steps=node.get("steps", []), task_id=state.get("task_id", ""),
-        screenshot=state.get("screenshot"), scenario=state.get("vision_scenario"),
-        flag=node.get("flag"), max_actions=node.get("max_actions"),
-    )
+    if control.cancelled():
+        result = {"app": node.get("app"), "node": node.get("node"), "status": "cancelled",
+                  "error": "cancelled by the user", "steps_done": []}
+    else:
+        result = run_app_subgraph(
+            app=node.get("app", "Notepad"), node=node.get("node", ""),
+            steps=node.get("steps", []), task_id=state.get("task_id", ""),
+            screenshot=state.get("screenshot"), scenario=state.get("vision_scenario"),
+            flag=node.get("flag"), max_actions=node.get("max_actions"),
+        )
     # The verifier reads state["after_screenshot"]. Without this the VLM verifier never runs.
     # Reset it every node so a stale screenshot from the previous node is never judged.
     after = (result.get("last_execution_result") or {}).get("screenshot_after_ref")
