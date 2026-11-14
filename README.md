@@ -21,7 +21,7 @@ TaskRequest -> Director (plan) -> Plan check -> Delegate -> Worker -> Verify ste
 | `graph/nodes/delegate.py` | Runs ONE node via the worker (carrier, no LLM) |
 | `graph/subgraphs/app_subgraph.py` | The worker: look -> decide one action -> safety -> act, in a loop (steps are hints) |
 | `graph/action_decider.py` | LLM picks one allowed action and an on-screen element id; invalid answers are rejected |
-| `graph/safety_port.py` | The only door to the machine; Team 3's Dispatcher plugs in via `NELLY_SAFETY_MODULE` (mock until then) |
+| `graph/safety_port.py` | The only door to the machine: frozen decision words (approved / rejected / needs_user_approval / blocked), approval scopes, run-bound approver, proposal hash. Team 3's Dispatcher plugs in via `NELLY_SAFETY_MODULE` (mock until then) |
 | `graph/nodes/verify.py`, `verifier.py` | Per-node verify (VLM on a fresh screenshot, rule fallback) and finalize |
 | `persistence/` | Checkpoint/audit seam: redaction, then Team 3's `db_helpers` store (shim fallback) |
 | `vision/` | Adapter around Team 1's vision output |
@@ -49,6 +49,9 @@ one-action-per-step parser. Anything not really executed is reported as `dry_run
 | `NELLY_MAX_ACTIONS` | Worker leash per sub-goal (default 8) |
 | `NELLY_ACTION_DECIDER=legacy` | Force the old prefix parser |
 | `NELLY_SAFETY_MODULE` | Module exposing `check(request)` for the real Safety |
+| `NELLY_POLICY_MODE` | `standard` (ask only the always-ask list) or `strict` (also ask above low risk) |
+| `NELLY_APP_ALLOWLIST` | Comma list of apps that need no approval (default: the Safety schema's apps); any other app always asks |
+| `NELLY_NO_PROMPT=1` | Never ask on the terminal: a run that needs approval pauses |
 | `NELLY_CHECKPOINT_MODULE`, `NELLY_REQUIRE_STORE=1` | Which store to import; fail instead of using the shim |
 | `NELLY_PERSIST=0` | Turn persistence off |
 | `NELLY_GRAPH_DB` | LangGraph checkpoint file (separate from the store's `agent.db`) |
@@ -60,3 +63,6 @@ one-action-per-step parser. Anything not really executed is reported as `dry_run
 - The worker never judges success: Verify does, on a fresh screenshot.
 - Replans are capped (2). A plan that does not match the request is re-planned once, then escalated.
 - Skipped, mocked or legacy behaviour is always labelled, never hidden.
+- Safety fails closed: an unknown decision or a crashing module is a block, and with no approver bound a run pauses and says why.
+- What runs is exactly what was approved: the request's hash is stored and re-checked before acting.
+- Two levels are recorded: the plan node (status, round, verdict) and each action (decision, approval, result).
