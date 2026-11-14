@@ -1,6 +1,7 @@
 import time
 
 from graph.state import AgentState
+from graph import node_status as ns
 from graph.subgraphs.app_subgraph import run_app_subgraph
 
 
@@ -23,7 +24,13 @@ def delegate_node(state: AgentState) -> dict:
     # Reset it every node so a stale screenshot from the previous node is never judged.
     after = (result.get("last_execution_result") or {}).get("screenshot_after_ref")
 
+    rnd = state.get("plan_round", 1)
+    nodes = ns.with_status(nodes, idx, ns.RUNNING, "delegated", rnd)
+    final = ns.worker_to_node_status(result)
+    nodes = ns.with_status(nodes, idx, final, result.get("error") or result.get("finish_reason") or "", rnd)
+
     return {
+        "nodes": nodes,
         "after_screenshot": after,
         "status": "executed",
         "latency_ms": int((time.time() - t0) * 1000),

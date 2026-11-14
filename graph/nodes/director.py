@@ -1,4 +1,5 @@
 from graph.state import AgentState
+from graph import node_status as ns
 from planner import plan_task
 from reasoning import PlanError
 
@@ -53,14 +54,18 @@ def director_node(state: AgentState) -> dict:
                                   replan_ctx=_replan_context(state, done))
         except PlanError as e:
             return _plan_failed(e)
-        nodes = _renumber(kept_nodes + new_nodes)   # new plan ids restart at n1: keep ids unique
+        rnd = state.get("plan_round", 1)
+        # the failed node and everything after it never completed: keep them, marked superseded
+        replaced = [ns.set_status(n, ns.SUPERSEDED, f"replan round {rnd + 1}", rnd) for n in old_nodes[done:]]
+        nodes = _renumber(kept_nodes + ns.fresh(new_nodes))   # new plan ids restart at n1: keep ids unique
         return {
             "status": "delegating",
             "nodes": nodes,
             "current_node_idx": done,           # resume at the first NEW node
             "sub_results": kept_results,
             "total_steps": len(nodes),
-            "plan_round": state.get("plan_round", 1) + 1,
+            "plan_round": rnd + 1,
+            "superseded_nodes": (state.get("superseded_nodes") or []) + replaced,
         }
 
     # ---- FIRST PLAN ----
@@ -68,5 +73,6 @@ def director_node(state: AgentState) -> dict:
         nodes = plan_task(goal, vision_ctx=vision, memory_ctx=state.get("sub_results"))
     except PlanError as e:
         return _plan_failed(e)
+    nodes = ns.fresh(nodes)
     return {"status": "delegating", "nodes": nodes, "current_node_idx": 0,
             "sub_results": [], "total_steps": len(nodes), "plan_round": 1}
