@@ -1,210 +1,191 @@
 """
-Vision Adapter — orchestrator side of the orchestrator <-> vision (Vision/Execution) boundary.
+Vision adapter — the orchestrator side of the Team 1 vision boundary.
 
-Two jobs only:
-  1. NORMALIZE  — one shape for real Vision and for fallback (so the worker never breaks).
-  2. QUALITY GATE — decide if the grounding is trustworthy enough for the Brain to act on.
-     If not, the Orchestrator must re-perceive / ask / escalate — never act blind.
+The contract is Team 1's ScreenObservation (v0.3). We do NOT rename its fields or convert its boxes:
+elements keep their own names (`id`, `type`, `text`, `bbox_norm` = [x1, y1, x2, y2] as 0..1 fractions
+of the screenshot, `confidence`, `clickable` = True | False | "unknown", `source`, `provenance`...).
+
+What this module adds is only ours:
+  1. a deterministic QUALITY GATE: is this screen trustworthy enough to act on? If not, the worker
+     must re-look / ask / escalate, never act blind.
+  2. `is_usable(el)`: ONE place that says whether an element may be acted on.
+  3. `to_prompt(ctx)`: a compact table of the screen for the LLM.
+  4. `fake_observation(app)`: a screen that is NOT real, always labelled as fake.
+
+Click POINTS are never computed from a box here. They come from Team 1's
+CoordinateManager.resolve_target_point() on the executor side.
 """
 from typing import Optional
 
 TOP_N = 30
 
-# --- shapes -----------------------------------------------------------------
+# Element types Team 1's contract allows (v0.3).
+ELEMENT_TYPES = ("text", "icon", "button", "input", "checkbox", "link", "menu_item", "tab", "image", "other")
+# `clickable` can be "unknown" (no evidence either way). We may TRY these types anyway, because
+# controls of these kinds are meant to be pressed; Verify checks the screen afterwards.
+INTERACTIVE_TYPES = ("button", "link", "input", "checkbox", "menu_item", "tab")
 
-def _bbox_norm(bbox: dict, screen: Optional[dict]) -> list:
+# The detector paths that mean "the learned model did not run".
+WEAK_DETECTORS = ("edge-proposals", "none", "fake")
+
+BLUR_HINTS = ("blur", "unclear", "low contrast", "illegible", "smudge", "not clear")
+
+
+def is_usable(el: dict) -> bool:
     """
-    Absolute bbox -> normalized [x, y, w, h] (window-relative, 0..1).
-    Top-left origin, matching the vision module's BoundingBox {x, y, width, height}
-    (02_VisionResult.schema.json). This is the ONE canonical format across all teams.
+    May the worker act on this element?
+      clickable True      -> yes
+      clickable False     -> no
+      clickable "unknown" -> only for interactive types (we try, then Verify looks at the screen)
     """
-    sw = (screen or {}).get("width") or 1920
-    sh = (screen or {}).get("height") or 1080
-    x, y, w, h = (float(bbox.get(k, 0)) for k in ("x", "y", "width", "height"))
-    return [round(x / sw, 4), round(y / sh, 4), round(w / sw, 4), round(h / sh, 4)]
-
-
-def _center_norm(bbox_norm: list) -> list:
-    """[x,y,w,h] -> [cx,cy] for anything that needs a click point."""
-    x, y, w, h = bbox_norm
-    return [round(x + w / 2, 4), round(y + h / 2, 4)]
-
-
-def _center_abs(bbox: dict) -> list:
-    x, y, w, h = (float(bbox.get(k, 0)) for k in ("x", "y", "width", "height"))
-    return [round(x + w / 2, 1), round(y + h / 2, 1)]
-
-
-def _norm_element(raw: dict, idx: int, screen: Optional[dict]) -> dict:
-    """Accepts the contract shape AND the legacy fallback shape. Never raises."""
-    bbox = raw.get("bbox") if isinstance(raw.get("bbox"), dict) else None
-    if bbox:
-        bbox_norm = _bbox_norm(bbox, screen)
-        center = _center_abs(bbox)
-    else:  # already normalized [x,y,w,h]
-        bbox_norm = list(raw.get("bbox_norm") or [0, 0, 0, 0])
-        center = None
-    conf = raw.get("confidence", raw.get("conf", 0.0))
-    known = {"element_id", "type", "text", "bbox", "bbox_norm", "confidence", "conf",
-             "interactable", "source"}
-    extra = {k: v for k, v in raw.items() if k not in known}
-    return {
-        "element_id": raw.get("element_id") or f"el_{idx}",
-        "type": raw.get("type") or raw.get("label") or "unknown",
-        "text": raw.get("text"),
-        "bbox_norm": bbox_norm,                  # [x, y, w, h] — canonical, all teams
-        "center_norm": _center_norm(bbox_norm),  # [cx, cy] for click targets
-        "center_abs": center,
-        "confidence": round(float(conf), 3),
-        "interactable": bool(raw.get("interactable", True)),
-        "source": raw.get("source") or "unknown",
-        # vision flags: a VLM mark is "grounded" only with independent evidence (see the vision module v2 report).
-        "confirmed": extra.get("confirmed"),
-        "ambiguous": extra.get("ambiguous"),
-        "extra": extra,
-    }
+    c = el.get("clickable")
+    if c is True:
+        return True
+    if c is False:
+        return False
+    return (el.get("type") or "") in INTERACTIVE_TYPES
 
 
 # --- quality gate -----------------------------------------------------------
 
-BLUR_HINTS = ("blur", "unclear", "low contrast", "illegible", "smudge", "not clear")
-UNKNOWN_APP_HINTS = ("unknown", "none", "null", "")
-
-
-def assess_quality(raw: dict, elements: list) -> dict:
+def assess_quality(obs: dict, elements: list) -> dict:
     """
-    Deterministic (not model-based) readability check on the grounding.
-    A VLM never decides 'is this clear' for us — it only supplies confidences,
-    and the Orchestrator applies fixed thresholds (auditable + repeatable).
+    Deterministic (not model-based) readability check on one ScreenObservation.
+    Fixed thresholds: auditable and repeatable. A VLM never decides "is this clear" for us.
     """
     reasons, score = [], 1.0
-
-    if raw.get("status") == "failed":
-        reasons.append("perception_failed")
-        score = 0.0
-    elif raw.get("status") == "partial":
-        reasons.append("perception_partial")
-        score -= 0.3
+    perception = obs.get("perception") or {}
 
     if not elements:
         reasons.append("no_elements")
         score = 0.0
-
-    if elements:
-        avg = sum(e["confidence"] for e in elements) / len(elements)
-        low = sum(1 for e in elements if e["confidence"] < 0.5) / len(elements)
+    else:
+        confs = [float(e.get("confidence") or 0.0) for e in elements]
+        avg = sum(confs) / len(confs)
+        low = sum(1 for c in confs if c < 0.5) / len(confs)
         if avg < 0.45:
             reasons.append(f"low_avg_confidence:{avg:.2f}")
             score -= 0.4
         if low > 0.7:
             reasons.append(f"mostly_low_confidence:{low:.0%}")
             score -= 0.3
-        if not any(e["interactable"] for e in elements):
-            reasons.append("no_interactable_elements")
-            score -= 0.2
+        if not any(is_usable(e) for e in elements):
+            reasons.append("nothing_usable_on_screen")
+            score -= 0.3
 
-    for w in raw.get("warnings") or []:
+    overall = obs.get("confidence")
+    if isinstance(overall, (int, float)) and overall < 0.4:
+        reasons.append(f"low_overall_confidence:{overall:.2f}")
+        score -= 0.3
+
+    detector = perception.get("detector")
+    if detector in WEAK_DETECTORS:
+        reasons.append(f"weak_detector:{detector}")           # the trained model did NOT run
+        score = min(score - 0.4, 0.5)                          # never "clear" on its own
+
+    if not obs.get("window"):
+        reasons.append("no_active_window")                    # vision silently captured the whole screen
+        score -= 0.2
+
+    if perception.get("vlm_error"):
+        reasons.append("vlm_error")
+
+    for w in obs.get("warnings") or []:
         if any(h in str(w).lower() for h in BLUR_HINTS):
             reasons.append(f"vision_warning:{w}")
             score -= 0.3
 
-    unconfirmed = [e for e in elements
-                   if e.get("confirmed") is False or e.get("ambiguous") is True]
-    if unconfirmed:
-        reasons.append(f"unconfirmed_marks:{len(unconfirmed)}/{len(elements)}")
-        score -= 0.35
-
-    app = raw.get("application")
-    if app is not None and str(app).strip().lower() in UNKNOWN_APP_HINTS:
-        reasons.append("app_not_identified")
-        score -= 0.1
-
     score = max(0.0, min(1.0, round(score, 2)))
-    return {"clear": score >= 0.6 and not reasons.count("perception_failed"), "score": score, "reasons": reasons}
+    return {"clear": score >= 0.6, "score": score, "reasons": reasons}
 
 
 # --- main entry -------------------------------------------------------------
 
-def normalize(raw: Optional[dict], screen: Optional[dict] = None,
-              source: str = "nelly_vision") -> dict:
+def normalize(obs: Optional[dict], source: str = "nelly_vision") -> dict:
     """
-    raw -> grounding context consumed by Director/worker.
-    Never raises: a broken Vision payload becomes status=failed + needs_review=True.
+    ScreenObservation (as a plain dict) -> the context the worker and the decider read.
+    Elements are Team 1's own dicts, untouched, only ordered and cut to the top N.
+    Never raises: anything that is not an observation becomes needs_review.
     """
-    if not isinstance(raw, dict):
-        return {
-            "app": None, "window_title": None, "status": "failed", "elements": [],
-            "truncated": False, "warnings": ["empty_vision_payload"], "error": "no_vision_payload",
-            "quality": {"clear": False, "score": 0.0, "reasons": ["no_vision_payload"]},
-            "needs_review": True, "vision_source": source,
-        }
+    if not isinstance(obs, dict):
+        return failed_context("no_vision_payload", source)
 
-    raw_elements = raw.get("elements") or []
-    elements = [_norm_element(e, i, screen) for i, e in enumerate(raw_elements) if isinstance(e, dict)]
-    elements.sort(key=lambda e: (not e["interactable"], -e["confidence"]))
-    top = elements[:TOP_N]
+    elements = [e for e in (obs.get("elements") or []) if isinstance(e, dict)]
+    # usable first, then the most confident; ties keep Team 1's reading order
+    ranked = sorted(enumerate(elements), key=lambda p: (not is_usable(p[1]),
+                                                       -(p[1].get("confidence") or 0.0), p[0]))
+    top = [e for _, e in ranked[:TOP_N]]
 
-    quality = assess_quality(raw, top)
-    warnings = list(raw.get("warnings") or [])
-    extra_keys = sorted({k for e in top for k in (e.get("extra") or {})})
-    if extra_keys:
-        warnings.append(f"element_extra_keys:{extra_keys}")
-
+    quality = assess_quality(obs, top)
+    window = obs.get("window") or {}
+    perception = obs.get("perception") or {}
     return {
-        "app": raw.get("application"),
-        "window_title": raw.get("window_title"),
-        "status": raw.get("status", "success"),
+        "screenshot_id": obs.get("screenshot_id"),
+        "schema_version": obs.get("schema_version"),
+        "app": window.get("process"),
+        "window_title": window.get("title"),
         "elements": top,
         "truncated": len(elements) > TOP_N,
-        "warnings": warnings,
-        "error": raw.get("error"),
+        "confidence": obs.get("confidence"),
+        "detector": perception.get("detector"),
+        "vlm_used": obs.get("vlm_used"),
+        "warnings": list(obs.get("warnings") or []),
+        "error": None,
         "quality": quality,
-        "needs_review": (not quality["clear"]) or raw.get("status") == "failed",
+        "needs_review": not quality["clear"],
         "vision_source": source,
     }
 
 
-# --- fallback (standalone testing only, same contract shape) ----------------
-
-def fallback_result(app: str, target: str = "button") -> dict:
-    """Contract-compliant VisionResult so fallback and real Vision share ONE shape."""
+def failed_context(reason: str, source: str = "nelly_vision") -> dict:
+    """A screen we could not read. The worker must stop and ask; it must never act on this."""
     return {
-        "request_id": "fallback-req",
-        "task_id": "fallback-task",
-        "status": "success",
-        "application": app,
-        "window_title": f"{app} (fallback grounding)",
+        "screenshot_id": None, "schema_version": None, "app": None, "window_title": None,
+        "elements": [], "truncated": False, "confidence": 0.0, "detector": None, "vlm_used": False,
+        "warnings": [reason], "error": reason,
+        "quality": {"clear": False, "score": 0.0, "reasons": [reason]},
+        "needs_review": True, "vision_source": source,
+    }
+
+
+# --- fake screen (no vision installed; dry runs and offline tests only) -----
+
+def fake_observation(app: str, target: str = "button") -> dict:
+    """
+    A ScreenObservation-shaped screen that is NOT real. It exists so the rest of the system can be
+    exercised without Team 1's vision, and it says so everywhere: the detector is "fake" and a
+    warning is attached. Never mistake it for a real screen.
+    """
+    return {
+        "schema_version": "0.3",
+        "screenshot_id": "fake-screenshot",
+        "window": {"title": f"{app} (FAKE SCREEN)", "process": app},
         "elements": [{
-            "element_id": "el_fallback_0",
-            "type": "button",
-            "text": target,
-            "bbox": {"x": 595, "y": 486, "width": 154, "height": 43},
-            "confidence": 0.82,
-            "interactable": True,
-            "source": "unknown",
+            "id": "e1", "type": "button", "text": target,
+            "bbox_norm": [0.31, 0.45, 0.39, 0.50],
+            "confidence": 0.82, "clickable": True, "source": "fast",
         }],
-        "warnings": ["fallback_grounding: not real perception"],
-        "error": None,
+        "confidence": 0.82,
+        "warnings": ["FAKE SCREEN: not real perception (Team 1 vision is not installed)"],
+        "perception": {"detector": "fake"},
+        "vlm_used": False,
     }
 
 
 # --- prompt compaction (what the Brain actually sees) -----------------------
 
 def to_prompt(ctx: Optional[dict], limit: int = TOP_N) -> str:
-    """Compact grounding text for the LLM. Keeps tokens low, keeps IDs stable."""
+    """Compact screen text for the LLM: one line per element, ids exactly as Team 1 numbered them."""
     if not isinstance(ctx, dict):
-        return "no grounding"
+        return "no screen"
     lines = [
-        f"app={ctx.get('app')} window={ctx.get('window_title')} "
-        f"status={ctx.get('status')} quality={ctx.get('quality', {}).get('score')} "
-        f"needs_review={ctx.get('needs_review')}",
+        f"app={ctx.get('app')} window={ctx.get('window_title')} detector={ctx.get('detector')} "
+        f"quality={ctx.get('quality', {}).get('score')} needs_review={ctx.get('needs_review')}",
     ]
     for e in (ctx.get("elements") or [])[:limit]:
-        lines.append(
-            f"- {e['element_id']} [{e['type']}] text={e['text']!r} "
-            f"bbox_norm={e['bbox_norm']} conf={e['confidence']} "
-            f"interactable={e['interactable']} src={e['source']}"
-        )
+        box = [round(v, 2) for v in (e.get("bbox_norm") or [])]
+        lines.append(f"{e.get('id')} {e.get('type')} {e.get('text')!r} {box} "
+                     f"conf={e.get('confidence')} clickable={e.get('clickable')}")
     if ctx.get("warnings"):
         lines.append(f"warnings={ctx['warnings']}")
     return "\n".join(lines)

@@ -194,15 +194,14 @@ def ensure_store_path():
 
 
 def vision_identity():
-    """Whose vision is actually running: the real package, or our fallback stub."""
+    """Whose vision is actually running: Team 1's installed package, or our labelled FAKE screen."""
     try:
-        from graph.subgraphs import app_subgraph as sub
-        if not sub.HAS_REAL_VISION:
-            return "fallback", None
-        mod = sys.modules.get("nelly_vision.perception") or sys.modules.get("nelly_vision")
-        f = getattr(mod, "__file__", "?")
-        # the offline test fixture is NOT the vision module's code
-        return ("fixture" if "fake_nelly_vision" in (f or "") else "nelly_vision"), f
+        from vision import omar_adapter
+        if not omar_adapter.available():
+            return "fake", None
+        import sys as _s
+        mod = _s.modules.get("nelly_vision")
+        return "nelly_vision", getattr(mod, "__file__", "?")
     except Exception as e:                                        # noqa: BLE001
         return "error", f"{type(e).__name__}: {e}"
 
@@ -295,8 +294,8 @@ def run_agent(real: bool):
     v_kind, v_file = vision_identity()
     print(f"  vision  : {v_kind}" + (f"  <- {v_file}" if v_file else ""))
     if v_kind != "nelly_vision":
-        print("            (the vision package is NOT importable -> the worker uses the fallback")
-        print("             stub. Nothing of the vision module's code was exercised.)")
+        print("            (the vision package is NOT installed -> the worker sees a labelled FAKE")
+        print("             screen. Nothing of Team 1's code was exercised.)")
 
     # The backend decides the file, not us: the store resolves BASE_DIR/agent.db itself.
     be = audit._load()
@@ -459,8 +458,7 @@ def main():
         if v_kind != "nelly_vision":
             print()
             print("  ABORT: --require-vision was given, but the real vision package did not load.")
-            print("         Set NELLY_VISION_PATH to the folder that CONTAINS nelly_vision,")
-            print("         or drop nelly_vision\\ next to the project, then run again.")
+            print("         Install it into this environment (pip install <vision package>), then run again.")
             return 2
 
     if a.require_store and _backend != "store":
