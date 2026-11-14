@@ -103,6 +103,37 @@ def _fill_missing_rows(db_path: str, checkpoint_id: str, state: dict) -> dict:
     return added
 
 
+def _write_actions(db_path: str, checkpoint_id: str, state: dict) -> int:
+    """
+    Action-level rows. The `actions` table is new (requested from Team 3); until it exists in
+    the store this does nothing, and the same rows still travel in the state blob.
+    Each action_id is written once, however many checkpoints carry it.
+    """
+    rows = state.get("actions") or []
+    if not rows:
+        return 0
+    n = 0
+    try:
+        with sqlite3.connect(db_path) as con:
+            cols = [r[1] for r in con.execute("PRAGMA table_info(actions)")]
+            if not cols:
+                return 0
+            now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+            for row in rows:
+                if "action_id" in cols and con.execute(
+                        "SELECT 1 FROM actions WHERE action_id = ?", (row.get("action_id"),)).fetchone():
+                    continue
+                data = {**row, "checkpoint_id": checkpoint_id, "created_at": now}
+                use = {k: v for k, v in data.items() if k in cols and k != "id"}
+                con.execute(f"INSERT INTO actions ({', '.join(use)}) VALUES ({', '.join('?' * len(use))})",
+                            [json.dumps(v) if isinstance(v, (dict, list)) else v for v in use.values()])
+                n += 1
+            con.commit()
+    except sqlite3.Error as e:                     # never break the run
+        _warn(f"could not write actions rows: {e}")
+    return n
+
+
 # --------------------------------------------------------------------------
 # public API (agreed 5 functions)
 # --------------------------------------------------------------------------
@@ -128,6 +159,7 @@ def save_checkpoint(state: dict, path: Optional[str] = None) -> str:
         cid = store.save_checkpoint(state)
 
     _fill_missing_rows(store.init_db(), cid, state)     # completes steps + audit_log
+    _write_actions(store.init_db(), cid, state)         # action level (no-op until the table exists)
     return cid
 
 
