@@ -25,7 +25,7 @@ os.environ["NELLY_SHOTS_DIR"] = "/tmp"
 r = X.execute(req("save_file")); assert r["status"] == "failed" and r["output"]["reject_code"] == "unsupported_action"
 assert r["strategy_used"] == "interim_pyautogui" and r["verification_status"] == "not_verified"
 
-# resolver not wired -> nothing is clicked, reason says so
+# no observation yet -> resolver refuses (no_observation), nothing is clicked
 os.environ["NELLY_LIVE_INPUT"] = "1"; os.environ.pop("NELLY_DRY_RUN", None); pg.calls.clear()
 r = X.execute(req()); assert r["status"] == "failed" and r["output"]["reject_code"] == "no_observation" and not pg.calls
 
