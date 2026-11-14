@@ -5,13 +5,13 @@ Input : one plain-language step + the current screen (Top-N elements from vision
 Output: {"status": "ok", "action", "element", "params", "why", "decider"}
         or {"status": "unresolved", "why"}
 
-The model may only choose from ALLOWED, and only element_ids that are really on screen.
+The model may only choose from ALLOWED, and only element ids that are really on screen.
 Anything else is rejected here, so a hallucinated id can never reach the executor.
 """
 import os
 
 import llm
-from vision.adapter import to_prompt
+from vision.adapter import to_prompt, is_usable
 
 ALLOWED = ("click", "type", "press", "save_file", "create_folder", "focus_window")
 NEEDS_ELEMENT = ("click", "type")
@@ -28,11 +28,6 @@ Use only what is on screen. If the step cannot be done from this screen, answer 
 
 Answer ONLY JSON:
 {"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "why": "short"}"""
-
-
-def _usable(el: dict) -> bool:
-    return (el.get("interactable", False) and el.get("confirmed") is not False
-            and el.get("ambiguous") is not True)
 
 
 def _legacy(step: str, ctx: dict) -> dict:
@@ -76,12 +71,12 @@ def _from_model(out, ctx: dict) -> dict:
 
     element = None
     if action in NEEDS_ELEMENT:
-        by_id = {e.get("element_id"): e for e in (ctx.get("elements") or [])}
+        by_id = {e.get("id"): e for e in (ctx.get("elements") or [])}
         element = by_id.get(out.get("element_id"))
         if element is None:
             return {"status": "unresolved", "why": f"element_id {out.get('element_id')!r} is not on screen"}
-        if not _usable(element):
-            return {"status": "unresolved", "why": f"element {out.get('element_id')!r} not usable (not interactable/confirmed)"}
+        if not is_usable(element):
+            return {"status": "unresolved", "why": f"element {out.get('element_id')!r} not usable (clickable=False or not an interactive type)"}
 
     params = {}
     if element is not None:
