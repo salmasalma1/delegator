@@ -97,6 +97,8 @@ def worker_to_node_status(sub: dict) -> str:
         return DRY_RUN if ran_nothing else SUCCEEDED
     if s == "needs_approval":
         return AWAITING_APPROVAL
+    if s == "cancelled":
+        return CANCELLED
     if s in ("needs_review", "needs_regrounding"):
         return NEEDS_INPUT
     return FAILED

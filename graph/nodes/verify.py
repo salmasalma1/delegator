@@ -42,6 +42,10 @@ def verify_step_node(state: AgentState) -> dict:
 
     node = nodes[idx]
 
+    if sub.get("status") == "cancelled":                 # the user stopped the run: nothing to judge
+        return _persist(state, {"status": "escalate", "cancelled": True, "requires_user": False,
+                                "escalation_reason": "cancelled by the user"})
+
     # Worker already refused to act (unreadable grounding / ungrounded step) -> escalate.
     if sub.get("status") in ("needs_review", "needs_regrounding", "needs_approval"):
         return _persist(state, {
@@ -110,7 +114,9 @@ def finalize_node(state: AgentState) -> dict:
 
     never_ran = any(v.get("executed") is False for v in recent)
 
-    if escalated:
+    if state.get("cancelled"):
+        status = "cancelled"
+    elif escalated:
         status = "escalated"
     elif nodes and covered >= len(nodes) and not failed:
         # Wiring passed, but if any step was only a dry run, do NOT claim the task is done.

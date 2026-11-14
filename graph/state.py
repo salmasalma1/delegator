@@ -35,6 +35,8 @@ class AgentState(TypedDict, total=False):
     latency_ms: Optional[int]
     plan_round: int
     superseded_nodes: list            # nodes a replan replaced (kept for the audit)
+    cancelled: bool                   # the user stopped the run
+    language: str                     # ar | en, of the user's request
     actions: list                     # action level: one row per proposed action (decision, approval, result)
     plan_check: Optional[dict]        # verdict of the pre-execution plan check
     plan_check_retries: int
