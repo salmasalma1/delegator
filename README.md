@@ -73,3 +73,7 @@ one-action-per-step parser. Anything not really executed is reported as `dry_run
 - Safety fails closed: an unknown decision or a crashing module is a block, and with no approver bound a run pauses and says why.
 - What runs is exactly what was approved: the request's hash is stored and re-checked before acting.
 - Two levels are recorded: the plan node (status, round, verdict) and each action (decision, approval, result).
+
+### Model provider
+Default: DashScope (Qwen). To try any OpenAI-compatible provider set `NELLY_LLM_API_KEY`, `NELLY_LLM_BASE_URL`, `NELLY_LLM_MODEL`
+(they win over the DashScope variables). The screenshot-based Verify needs a vision model; with a text-only model set `NELLY_VERIFIER=rule`.
