@@ -67,3 +67,23 @@ dec = {"action": "click", "params": {"bbox_norm": [.1, .1, .2, .2]}, "element": 
 ok, _ = _perform(dec, "Notepad", "t1", get_safety(), sub, ctx, "step")
 assert not ok and sub["status"] == "needs_regrounding" and sub["actions"][0]["reject_code"] == "stale"
 print("executor OK")
+
+# ---- open_app: only a fixed list, by NAME; the model never supplies a command ----
+import subprocess
+launched = []
+subprocess.Popen = lambda cmd, *a, **k: launched.append(cmd)
+X.OPEN_WAIT_S = 0
+os.environ["NELLY_LIVE_INPUT"] = "1"; os.environ.pop("NELLY_DRY_RUN", None)
+r = X.execute({**req("open_app"), "parameters": {"app": "Notepad"}}); assert r["status"] == "success" and launched == [["notepad.exe"]], launched
+launched.clear()
+for bad in ("cmd.exe", "notepad; calc", "powershell", "", "C:\\x.exe"):
+    r = X.execute({**req("open_app"), "parameters": {"app": bad}}); assert r["status"] == "failed" and r["output"]["reject_code"] == "app_not_allowed", bad
+assert not launched
+os.environ.pop("NELLY_LIVE_INPUT"); r = X.execute({**req("open_app"), "parameters": {"app": "Notepad"}})
+assert r["output"]["dry_run"] and not launched
+from graph.safety_port import classify
+assert classify("open_app") == ("medium", True)
+from graph.action_decider import _from_model
+assert _from_model({"action": "open_app", "app": "Notepad", "why": "w"}, {"elements": []})["params"] == {"app": "Notepad"}
+assert _from_model({"action": "open_app"}, {"elements": []})["status"] == "unresolved"
+print("open_app OK")
