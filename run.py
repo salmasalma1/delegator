@@ -12,8 +12,19 @@ from gateway.session import Session
 
 
 def _progress(event: dict):
-    for node in event:
+    for node, update in event.items():
         print(f"  -> {node}")
+        update = update if isinstance(update, dict) else {}
+        if node == "director" and update.get("nodes"):             # the PLAN, as soon as the planner makes it
+            print("     PLAN:")
+            for n in update["nodes"]:
+                print(f"       {n.get('id', '')} [{n.get('app')}] {n.get('node')}")
+                print(f"           done when: {n.get('flag')}")
+                for st in n.get("steps") or []:
+                    print(f"           hint: {st}")
+        elif node == "plan_check" and update.get("plan_verdict"):
+            v = update["plan_verdict"]
+            print(f"     plan check: ok={v.get('ok')} via={v.get('method')} {v.get('reason') or ''}".rstrip())
 
 
 def main(argv):
