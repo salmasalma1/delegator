@@ -88,7 +88,11 @@ def resolve_point(element_id, bbox_norm, observation_id=None):
                              f"({last['screenshot_id']!r}): re-perceive", code="observation_mismatch")
     from nelly_vision import CoordinateManager, TargetRejected as VisionRejected   # noqa: PLC0415
     try:
-        point = CoordinateManager().resolve_target_point(last["observation"], element_id, bbox_norm=bbox_norm)
+        # 15 s is Team 1's default. A human approval or a slow model between "look" and "click" can exceed it;
+        # raise it for a test with NELLY_MAX_OBS_AGE (window moves/resizes are still checked by Team 1).
+        max_age = float(os.getenv("NELLY_MAX_OBS_AGE", "15"))
+        point = CoordinateManager(max_age_s=max_age).resolve_target_point(
+            last["observation"], element_id, bbox_norm=bbox_norm)
     except VisionRejected as e:
         raise TargetRejected(str(e), code=e.code) from e
     return point.x, point.y
