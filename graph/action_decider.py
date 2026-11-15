@@ -13,21 +13,22 @@ import os
 import llm
 from vision.adapter import to_prompt, is_usable
 
-ALLOWED = ("click", "type", "press", "save_file", "create_folder", "focus_window")
+ALLOWED = ("click", "type", "press", "save_file", "create_folder", "focus_window", "open_app")
 NEEDS_ELEMENT = ("click", "type")
 _warned = [False]
 
 SYSTEM = """You are the hands of a Windows desktop agent. You get ONE step to carry out and the
 elements currently visible on screen. Choose exactly ONE action that performs the step.
 
-Allowed actions: click, type, press, save_file, create_folder, focus_window.
+Allowed actions: click, type, press, save_file, create_folder, focus_window, open_app.
 - click / type need "element_id" copied EXACTLY from the list. type also needs "text".
 - press needs "keys": a list like ["ctrl","s"].
 - save_file / create_folder need "path". focus_window needs nothing.
+- open_app starts a program that is not open yet; it needs "app" (e.g. "Notepad"). Do not click the Start menu for this.
 Use only what is on screen. If the step cannot be done from this screen, answer action "none".
 
 Answer ONLY JSON:
-{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "why": "short"}"""
+{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "app": null, "why": "short"}"""
 
 
 def _legacy(step: str, ctx: dict) -> dict:
@@ -90,6 +91,10 @@ def _from_model(out, ctx: dict) -> dict:
         if not (isinstance(keys, list) and keys):
             return {"status": "unresolved", "why": "press without keys"}
         params["keys"] = [str(k).lower() for k in keys]
+    elif action == "open_app":
+        if not (isinstance(out.get("app"), str) and out["app"].strip()):
+            return {"status": "unresolved", "why": "open_app without app"}
+        params["app"] = out["app"].strip()
     elif action in ("save_file", "create_folder"):
         if not out.get("path"):
             return {"status": "unresolved", "why": f"{action} without path"}
@@ -102,10 +107,11 @@ def _from_model(out, ctx: dict) -> dict:
 SYSTEM_LOOP = """You are the hands of a Windows desktop agent working on ONE sub-goal.
 You see the live screen and what you already did. Choose the NEXT single action.
 
-Allowed actions: click, type, press, save_file, create_folder, focus_window, finish.
+Allowed actions: click, type, press, save_file, create_folder, focus_window, open_app, finish.
 - click / type need "element_id" copied EXACTLY from the list. type also needs "text".
 - press needs "keys": a list like ["ctrl","s"].
 - save_file / create_folder need "path". focus_window needs nothing.
+- open_app starts a program that is not open yet; it needs "app" (e.g. "Notepad"). Do not click the Start menu for this.
 - finish: the "done when" condition is visibly true on the CURRENT screen, or every hint is
   accomplished. Do not finish just because you are out of ideas.
 - If it cannot be done from this screen, answer action "none" and say why.
@@ -114,7 +120,7 @@ The hints are suggestions written before anyone saw the screen. Follow them when
 the screen says otherwise, trust the screen. Never repeat an action that did not change anything.
 
 Answer ONLY JSON:
-{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "why": "short"}"""
+{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "app": null, "why": "short"}"""
 
 
 def decide_next(app: str, node: str, flag: str, hints: list, history: list, ctx: dict) -> dict:

@@ -8,7 +8,7 @@ Rules this file keeps (the worker and Safety rely on them):
   * it never judges success: verification_status is always "not_verified" (Verify decides, from a new screenshot)
   * it NEVER computes pixels from a box. The click point comes from Team 1's coordinate manager through
     vision.vision_adapter.resolve_point(); if that is not wired or refuses (stale, window moved...), nothing is clicked
-  * only click / type / press are implemented. Anything else is reported as "failed: not supported", never faked
+  * only click / type / press / open_app are implemented. open_app starts ONLY the programs in OPENABLE, by name. Anything else is reported as "failed: not supported", never faked
   * stop switch is checked first; the pyautogui corner failsafe is ON (mouse to a screen corner = stop everything)
   * DRY RUN IS THE DEFAULT: nothing moves unless NELLY_LIVE_INPUT=1 is set (and pyautogui exists); the result says dry_run
   * typed text is never written to the result
@@ -20,7 +20,11 @@ import time
 from graph import control
 
 STRATEGY = "interim_pyautogui"
-SUPPORTED = ("click", "type", "press")
+SUPPORTED = ("click", "type", "press", "open_app")
+# The model NEVER supplies a command, only an app NAME. Only these names can be started.
+OPENABLE = {"notepad": "notepad.exe", "file explorer": "explorer.exe", "explorer": "explorer.exe",
+            "calculator": "calc.exe"}
+OPEN_WAIT_S = float(os.getenv("NELLY_OPEN_WAIT", "2.5"))     # let the new window appear and take focus
 PAUSE_S = float(os.getenv("NELLY_ACTION_PAUSE", "0.4"))
 SETTLE_S = float(os.getenv("NELLY_SETTLE", "0.6"))        # let the UI react before the "after" screenshot
 
@@ -92,6 +96,24 @@ def _type_text(pg, text: str):
         return f"non-ASCII text needs pyperclip ({type(e).__name__})"
 
 
+def _open_app(req, params, pg, dry, t0):
+    name = str(params.get("app") or "").strip().lower()
+    exe = OPENABLE.get(name)
+    if not exe:
+        return _result(req, "failed", t0, f"app {name!r} is not in the interim executor's list {sorted(OPENABLE)}",
+                       reject_code="app_not_allowed")
+    if dry:
+        return _result(req, "success", t0, None, dry_run=True, would_open=exe,
+                       dry_run_reason="set NELLY_LIVE_INPUT=1 to act for real" if _dry_requested() else "pyautogui missing")
+    try:
+        import subprocess                                   # noqa: PLC0415
+        subprocess.Popen([exe])                             # fixed program name from OPENABLE, no shell, no arguments
+        time.sleep(OPEN_WAIT_S)
+    except Exception as e:                                  # noqa: BLE001
+        return _result(req, "failed", t0, f"{type(e).__name__}: {e}", reject_code="executor_error")
+    return _result(req, "success", t0, None, opened=exe, _shot=_shot(pg, req))
+
+
 def execute(req: dict) -> dict:
     t0 = time.time()
     action = (req.get("action_type") or "").lower()
@@ -105,6 +127,9 @@ def execute(req: dict) -> dict:
 
     pg = _load_pyautogui()
     dry = _dry_requested() or pg is None
+
+    if action == "open_app":
+        return _open_app(req, params, pg, dry, t0)
 
     point, rejected = (None, None)
     if action in ("click", "type"):
