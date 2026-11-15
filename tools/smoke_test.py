@@ -477,7 +477,13 @@ def main():
             except OSError:
                 pass
 
-    print(f"  mode    : {'LIVE (real Qwen + vision)' if a.real else 'offline (LLM stubbed, vision fixture)'}")
+    # Offline means offline: a labelled FAKE screen, no dependence on what is on the desktop.
+    # Real vision on the live screen is used only with --real or --require-vision.
+    fake_vision = (not a.real) and (not a.require_vision)
+    if fake_vision:
+        os.environ["NELLY_VISION"] = "off"
+    os.environ.setdefault("NELLY_DRY_RUN", "1") if not a.real else None
+    print(f"  mode    : {'LIVE (real Qwen + vision)' if a.real else 'offline (LLM stubbed, ' + ('vision FAKE screen' if fake_vision else 'REAL vision on the live screen: result depends on what is visible') + ')'}")
     print(f"  task    : {TASK}")
 
     final = run_agent(a.real)
