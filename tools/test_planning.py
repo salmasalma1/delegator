@@ -211,11 +211,11 @@ def main():
     if a.offline:
         run_offline()
     else:
-        key = os.getenv("DASHSCOPE_API_KEY", "")
-        if not key or "PUT_YOUR_KEY" in key or len(key) < 30:
+        import llm
+        if not llm.available():
             print()
             print("  The API key is missing or still the placeholder.")
-            print("  Put a real key in delegator/.env :  DASHSCOPE_API_KEY=sk-...")
+            print("  Set DASHSCOPE_API_KEY (or NELLY_LLM_API_KEY + NELLY_LLM_BASE_URL + NELLY_LLM_MODEL)")
             print("  Then run this again. To check the tool itself: --offline")
             return 2
 
