@@ -222,7 +222,10 @@ class DesktopExecutor:
         except Exception as exc:          # Team 1's TargetRejected carries a code: stale, window_resized, off_screen...
             code = getattr(exc, "code", None)
             if code:
-                raise Blocked(code, str(exc)) from None
+                detail = str(exc)
+                if detail.startswith(f"{code}: "):  # CHANGED(team2): TargetRejected's text already starts with the code
+                    detail = detail[len(code) + 2:]  # CHANGED(team2): so it is not repeated ("stale: stale: ...")
+                raise Blocked(code, detail) from None
             raise
 
     def _act(self, call: ToolCall, point, stop: threading.Event) -> None:

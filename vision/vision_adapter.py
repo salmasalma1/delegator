@@ -12,6 +12,7 @@ Rules:
   * fields are returned exactly as Team 1 names them; nothing is renamed or converted here
 """
 import os
+import threading
 
 _perceiver = [None]
 _last = [None]                  # the last observation object (the coordinate manager needs it, not a dict)
@@ -46,9 +47,60 @@ def _get():
     return _perceiver[0]
 
 
+DEFAULT_VISION_TIMEOUT_S = 180.0
+_gen = [0]                       # call counter: a call that timed out must not overwrite a newer result
+_busy = threading.Lock()         # one perception at a time (the Perceiver holds models and frame caches)
+
+
+def vision_timeout():
+    """F5: seconds one observe() may take (NELLY_VISION_TIMEOUT, default 180; 0 or less = no limit)."""
+    raw = os.getenv("NELLY_VISION_TIMEOUT")
+    if raw is None:
+        return DEFAULT_VISION_TIMEOUT_S
+    try:
+        v = float(raw)
+    except ValueError:
+        return DEFAULT_VISION_TIMEOUT_S
+    return v if v > 0 else None
+
+
 def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
-    """One screen -> ScreenObservation 0.3 as a JSON-able dict. Raises on any failure.
+    """One screen -> ScreenObservation 0.3 as a JSON-able dict. Raises on any failure, and TimeoutError when it
+    takes longer than NELLY_VISION_TIMEOUT (the step then stops as needs_review instead of hanging).
     `screenshot` is a path / PIL image; None captures the real screen (monitor of the foreground window)."""
+    _gen[0] += 1
+    gen, limit = _gen[0], vision_timeout()
+    box = {}
+
+    def run():
+        if not _busy.acquire(timeout=limit if limit else -1):
+            box["error"] = TimeoutError(f"a previous vision call is still running after {limit:.0f} s "
+                                        "(NELLY_VISION_TIMEOUT)")
+            return
+        try:
+            box["data"] = _observe_once(screenshot=screenshot, target=target, allow_vlm=allow_vlm, gen=gen)
+        except BaseException as e:                                     # noqa: BLE001  (re-raised below)
+            box["error"] = e
+        finally:
+            _busy.release()
+
+    if limit is None:
+        run()
+    else:
+        worker = threading.Thread(target=run, name="nelly-vision", daemon=True)
+        worker.start()
+        worker.join(limit)
+        if worker.is_alive():
+            _gen[0] += 1                                 # abandon this call: its late result is never stored
+            raise TimeoutError(f"vision took longer than {limit:.0f} s (NELLY_VISION_TIMEOUT)")
+    if "error" in box:
+        raise box["error"]
+    return box["data"]
+
+
+def _observe_once(screenshot=None, target=None, allow_vlm: bool = False, gen=None) -> dict:
+    from vision.env_check import ensure_memory_for_ocr                   # noqa: PLC0415
+    ensure_memory_for_ocr()                 # F6: below the safe level OCR is never started (it crashed the process)
     from nelly_vision.capture import capture_screen, new_screenshot_id   # noqa: PLC0415
     p = _get()
     if screenshot is None:
@@ -64,8 +116,18 @@ def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
     if data.get("schema_version") != "0.3":
         raise ValueError(f"expected ScreenObservation 0.3, got schema_version={data.get('schema_version')!r}")
     # what the coordinate manager needs later to turn a box into a click point
-    _last[0] = {"observation": obs, "screen": screen, "window": window, "screenshot_id": data.get("screenshot_id")}
+    grounding = getattr(res, "grounding", None)          # F3: Team 1's own answer for `target`, when it gives one
+    if gen is not None and gen != _gen[0]:
+        return data                                      # this call timed out and a newer one started: keep _last
+    _last[0] = {"observation": obs, "screen": screen, "window": window, "screenshot_id": data.get("screenshot_id"),
+                "grounding": grounding.model_dump(mode="json") if grounding is not None else None}
     return data
+
+
+def last_grounding():
+    """Team 1's GroundingResult (as a dict) for the target of the last observe() call, or None."""
+    last = _last[0]
+    return (last or {}).get("grounding")
 
 
 def resolve_point(element_id, bbox_norm, observation_id=None):

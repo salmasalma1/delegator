@@ -73,6 +73,17 @@ class _ControlStop(threading.Event):
         return super().is_set() or control.cancelled()
 
 
+def _coords():
+    """F7: Team 1's CoordinateManager with the age limit from NELLY_MAX_OBS_AGE (its max_age_s parameter; Team 1's
+    default 15 s when unset). Team 1's rule itself is unchanged."""
+    from nelly_vision.coordinates import CoordinateManager                    # noqa: PLC0415
+    try:
+        max_age = float(os.getenv("NELLY_MAX_OBS_AGE", "15"))
+    except ValueError:
+        max_age = 15.0
+    return CoordinateManager(max_age_s=max_age)
+
+
 def _executor(dry: bool):
     key = "dry" if dry else "desktop"
     if key not in _executors:
@@ -81,7 +92,7 @@ def _executor(dry: bool):
             _executors[key] = DryRunExecutor()
         else:
             from execution.team1.executor_desktop import DesktopExecutor      # noqa: PLC0415
-            _executors[key] = DesktopExecutor()
+            _executors[key] = DesktopExecutor(coords=_coords())               # F7: our age limit, Team 1's rule
     return _executors[key]
 
 
@@ -182,6 +193,14 @@ def execute(req: dict) -> dict:
     observation, rejected = _observation(req)
     if rejected:
         return _result(req, "failed", t0, dry, reject_code=rejected[0], error=rejected[1])
+    if call.target_element_id:
+        # F1: the target must lie inside the named app's window (product guard, also for direct callers)
+        from vision.target_guard import REASON, check_target                     # noqa: PLC0415
+        element = next((e for e in (observation or {}).get("elements") or []
+                        if e.get("id") == call.target_element_id), None)
+        inside, why_not = check_target(element or {"id": call.target_element_id}, observation, app, live=not dry)
+        if not inside:
+            return _result(req, "blocked", t0, dry, reject_code=REASON, error=why_not)
     try:
         res = _executor(dry).execute(call, observation=observation, stop=_ControlStop(), app=app)
     except Exception as e:                                                    # noqa: BLE001

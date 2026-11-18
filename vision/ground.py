@@ -9,7 +9,7 @@ to the Brain/VLM for re-grounding — it must never silently pick element[0].
 import re
 from typing import Optional, Tuple
 
-from vision.adapter import is_usable
+from vision.adapter import usable_for
 
 STOP = {"the", "a", "an", "in", "on", "to", "of", "and", "then", "please", "with", "into"}
 
@@ -52,8 +52,8 @@ def _verb(step: str) -> Optional[str]:
 def score(step: str, el: dict) -> Tuple[float, list]:
     """Higher = better fit. Returns (score, why)."""
     why, s = [], 0.0
-    if not is_usable(el):
-        return -1.0, ["not usable (clickable=False or not an interactive type)"]
+    if not usable_for(el, step):       # F2: a text label with clickable=None counts when it names the target
+        return -1.0, ["not usable (clickable=False, or not an interactive type and no text match)"]
 
     step_tok = _tokens(step)
     el_tok = _tokens(el.get("text"))

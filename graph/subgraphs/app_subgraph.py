@@ -15,6 +15,7 @@ except Exception:                                   # execution module not prese
     HAS_ADAPTER = False
 
 from vision.adapter import normalize, fake_observation, failed_context
+from vision.target_guard import check_target
 from vision.validate import validate_observation
 from vision import vision_adapter
 import os
@@ -52,7 +53,7 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
     * not installed     -> FAKE screen, labelled fake in detector + warnings (dry runs / tests only)
     """
     if not vision_adapter.available():
-        ctx = normalize(fake_observation(app, target), source="fake")
+        ctx = normalize(fake_observation(app, target), source="fake", target=target)
         # A fake screen may only feed a DRY run. With a real input backend it must stop, never click fake coordinates.
         live = HAS_ADAPTER and desktop_adapter.live_requested() \
             and os.getenv("NELLY_ALLOW_FAKE_VISION", "") != "1"
@@ -60,13 +61,23 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
         if live:
             ctx["warnings"].append("fake vision with a live executor: refusing to act (unset NELLY_LIVE_INPUT)")
         return ctx
+    # F5: a live run always looks at the LIVE screen. A screenshot file has no window or monitor, so Team 1's
+    # window / DPI checks cannot run on it; files are for dry runs, tests and replays only.
+    ignored = None
+    if screenshot is not None and HAS_ADAPTER and getattr(desktop_adapter, "live_requested", lambda: False)():
+        ignored, screenshot = screenshot, None
     try:
-        raw = vision_adapter.observe(screenshot=screenshot, target=target)
+        raw = vision_adapter.observe(screenshot=screenshot, target=target)   # NELLY_VISION_TIMEOUT applies
     except Exception as e:                                   # noqa: BLE001
         print(f"[Vision] failed: {type(e).__name__}: {e}")
         return failed_context(f"vision_error:{type(e).__name__}: {e}")
     ok, errs = validate_observation(raw)
-    ctx = normalize(raw, source="nelly_vision")
+    ctx = normalize(raw, source="nelly_vision", target=target)
+    if ignored is not None:
+        ctx["warnings"].append(f"live run: screenshot file ignored ({os.path.basename(str(ignored))}), "
+                               "live screen captured instead")
+    # F3: Team 1's GroundingResult for this target (the decider prefers it to our own word matching)
+    ctx["grounding"] = getattr(vision_adapter, "last_grounding", lambda: None)()
     if not ok:
         print(f"[Vision] contract violation: {errs[:3]}")
         ctx["warnings"].append(f"contract_violation:{errs[:2]}")
@@ -123,8 +134,32 @@ def _act(req: dict) -> dict:
 
 # Refusals that mean "the picture no longer matches the screen": the worker reports needs_regrounding (Verify then
 # escalates to the user) instead of failed. wrong_window: Team 1's focus guard (another window is in front).
-REGROUND_CODES = ("stale", "window_resized", "window_gone", "window_minimized", "off_window", "stale_target",
-                  "wrong_window")
+REGROUND_CODES = ("stale", "window_moved", "window_resized", "window_gone", "window_minimized", "off_window",
+                  "stale_target", "wrong_window")
+
+
+def reground_retries() -> int:
+    """F4: how many times the worker looks again after a REGROUND_CODES refusal before escalating (default 2)."""
+    try:
+        return max(0, int(os.getenv("NELLY_REGROUND_RETRIES", "2")))
+    except ValueError:
+        return 2
+
+
+def _relook(sub_result: dict, relooks: int) -> bool:
+    """After a failed _perform: True = look again (a fresh capture and decision), False = stop. Only executor
+    refusals in REGROUND_CODES are retried, never Safety decisions or other errors; the count is bounded."""
+    code = sub_result.pop("reground_code", None)
+    if not code:
+        return False
+    if relooks >= reground_retries():
+        sub_result["error"] = f"{sub_result.get('error')} (looked again {relooks} time(s); still {code})"
+        return False
+    sub_result.setdefault("relooks", []).append(code)
+    sub_result["status"] = "running"
+    sub_result.pop("error", None)
+    print(f"[worker] {code}: looking at the screen again ({relooks + 1}/{reground_retries()})")
+    return True
 MAX_ACTIONS = int(os.getenv("NELLY_MAX_ACTIONS", "8"))     # the worker's leash per sub-goal
 STUCK_AFTER = 3                                             # same action this many times in a row = stuck
 
@@ -153,6 +188,14 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
     Returns (ok, exec_result). ok=False means the worker must stop: sub_result already says why.
     """
     element = decision.get("element") or {}
+    # F1: a pointer target must lie inside the named app's window, or the request is never built or sent.
+    live = HAS_ADAPTER and getattr(desktop_adapter, "live_requested", lambda: False)()
+    inside, why_not = check_target(decision.get("element"), ctx, app, live=live)
+    if not inside:
+        sub_result["status"] = "needs_regrounding"
+        sub_result["error"] = why_not
+        sub_result["ungrounded_step"] = label
+        return False, None
     req = _build_request(decision, app, task_id)
 
     verdict = normalize_decision(safety.check(req))      # whatever it returns, only the frozen words count
@@ -188,6 +231,8 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
         # Team 1 refused the click because the picture is out of date: look again, do not call it a failure
         sub_result["status"] = ("cancelled" if exec_result.get("status") == "cancelled"
                                 else "needs_regrounding" if code in REGROUND_CODES else "failed")
+        if sub_result["status"] == "needs_regrounding":
+            sub_result["reground_code"] = code           # F4: the loop may look again (bounded)
         sub_result["error"] = f"execution {exec_result.get('status')}: {exec_result.get('error')}"
         return False, exec_result
 
@@ -232,41 +277,51 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
     The worker as a mini-agent: look -> decide ONE action -> safety -> act -> look again,
     until the model says `finish`, the leash runs out, or it gets stuck.
     It never judges success: `finish` only means "I think I am done"; Verify decides.
+    A refusal because the screen changed (REGROUND_CODES) is followed by a fresh look, at most
+    reground_retries() times per action (F4); those re-looks do not use up the action leash.
     """
     sub_result = {"app": app, "node": node, "status": "running", "steps_done": [], "mode": "loop"}
     safety = get_safety()
     history, sigs, shot = [], [], screenshot
 
     for _ in range(max_actions):
-        if control.cancelled():
-            sub_result["status"] = "cancelled"
-            sub_result["error"] = "cancelled by the user"
-            return sub_result
-        ctx = perceive_screen(app, node, shot, scenario)
-        if not _observe(sub_result, ctx):
-            return sub_result
+        relooks = 0
+        while True:
+            if control.cancelled():
+                sub_result["status"] = "cancelled"
+                sub_result["error"] = "cancelled by the user"
+                return sub_result
+            ctx = perceive_screen(app, node, shot, scenario)
+            if not _observe(sub_result, ctx):
+                return sub_result
 
-        decision = decide_next(app, node, flag, hints, history, ctx)
-        decision["observation_id"] = ctx.get("screenshot_id")
-        if decision["status"] != "ok":
-            sub_result["status"] = "needs_regrounding"
-            sub_result["error"] = f"step_not_resolved: {node!r} ({decision['why']})"
-            sub_result["ungrounded_step"] = node
-            return sub_result
-        if decision["action"] == "finish":
-            sub_result["status"] = "completed"
-            sub_result["finish_reason"] = decision["why"]
-            return sub_result
+            decision = decide_next(app, node, flag, hints, history, ctx)
+            decision["observation_id"] = ctx.get("screenshot_id")
+            if decision["status"] != "ok":
+                sub_result["status"] = "needs_regrounding"
+                sub_result["error"] = f"step_not_resolved: {node!r} ({decision['why']})"
+                sub_result["ungrounded_step"] = node
+                return sub_result
+            if decision["action"] == "finish":
+                sub_result["status"] = "completed"
+                sub_result["finish_reason"] = decision["why"]
+                return sub_result
 
-        sigs.append(_sig(decision))
-        if len(sigs) >= STUCK_AFTER and len(set(sigs[-STUCK_AFTER:])) == 1:
-            sub_result["status"] = "failed"
-            sub_result["error"] = f"stuck: repeated {decision['action']} {STUCK_AFTER} times with no progress"
-            return sub_result
+            sigs.append(_sig(decision))
+            if len(sigs) >= STUCK_AFTER and len(set(sigs[-STUCK_AFTER:])) == 1:
+                sub_result["status"] = "failed"
+                sub_result["error"] = f"stuck: repeated {decision['action']} {STUCK_AFTER} times with no progress"
+                return sub_result
 
-        ok, exec_result = _perform(decision, app, task_id, safety, sub_result, ctx,
-                                   f"{decision['action']}: {decision['why']}")
-        if not ok:
+            ok, exec_result = _perform(decision, app, task_id, safety, sub_result, ctx,
+                                       f"{decision['action']}: {decision['why']}")
+            if ok:
+                break
+            if _relook(sub_result, relooks):
+                relooks += 1
+                sigs.pop()                               # a refused action is not a repeat of a done one
+                shot = screenshot
+                continue
             return sub_result
         history.append(f"{len(history) + 1}. {decision['action']} "
                        f"{(decision.get('element') or {}).get('id') or ''} {decision['why']}".strip())
@@ -279,26 +334,32 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
 
 
 def _run_steps(app, node, steps, task_id, screenshot, scenario, flag) -> dict:
-    """No model: one action per step (the old behaviour, legacy prefix parser)."""
+    """No model: one action per step (the old behaviour, legacy prefix parser), with the same bounded re-look."""
     sub_result = {"app": app, "node": node, "status": "running", "steps_done": [], "mode": "steps"}
     safety = get_safety()
     for step in steps:
-        if control.cancelled():
-            sub_result["status"] = "cancelled"
-            sub_result["error"] = "cancelled by the user"
-            return sub_result
-        ctx = perceive_screen(app, step, screenshot, scenario)
-        if not _observe(sub_result, ctx):
-            return sub_result
-        decision = decide_action(step, app, node, ctx, flag=flag)
-        decision["observation_id"] = ctx.get("screenshot_id")
-        if decision["status"] != "ok":
-            sub_result["status"] = "needs_regrounding"
-            sub_result["error"] = f"step_not_resolved: {step!r} ({decision['why']})"
-            sub_result["ungrounded_step"] = step
-            return sub_result
-        ok, _ = _perform(decision, app, task_id, safety, sub_result, ctx, step)
-        if not ok:
+        relooks = 0
+        while True:
+            if control.cancelled():
+                sub_result["status"] = "cancelled"
+                sub_result["error"] = "cancelled by the user"
+                return sub_result
+            ctx = perceive_screen(app, step, screenshot, scenario)
+            if not _observe(sub_result, ctx):
+                return sub_result
+            decision = decide_action(step, app, node, ctx, flag=flag)
+            decision["observation_id"] = ctx.get("screenshot_id")
+            if decision["status"] != "ok":
+                sub_result["status"] = "needs_regrounding"
+                sub_result["error"] = f"step_not_resolved: {step!r} ({decision['why']})"
+                sub_result["ungrounded_step"] = step
+                return sub_result
+            ok, _ = _perform(decision, app, task_id, safety, sub_result, ctx, step)
+            if ok:
+                break
+            if _relook(sub_result, relooks):
+                relooks += 1
+                continue
             return sub_result
     sub_result["status"] = "completed"
     return sub_result

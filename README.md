@@ -49,6 +49,8 @@ one-action-per-step parser. Anything not really executed is reported as `dry_run
 
 ## Settings (environment variables)
 
+The full list, with defaults, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). The most used:
+
 | Variable | Meaning |
 |---|---|
 | `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | Qwen access |

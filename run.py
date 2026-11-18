@@ -29,6 +29,8 @@ def _progress(event: dict):
 
 def main(argv):
     quiet = os.getenv("NELLY_QUIET") == "1"
+    from vision.env_check import print_startup_warnings      # F6: detector / memory (read-only, no secrets)
+    print_startup_warnings()
     session = Session(on_event=None if quiet else _progress)
 
     if argv:

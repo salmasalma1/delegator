@@ -11,7 +11,7 @@ Anything else is rejected here, so a hallucinated id can never reach the executo
 import os
 
 import llm
-from vision.adapter import to_prompt, is_usable
+from vision.adapter import to_prompt, usable_for
 
 ALLOWED = ("click", "type", "press", "save_file", "create_folder", "focus_window", "open_app")
 NEEDS_ELEMENT = ("click", "type")
@@ -31,13 +31,43 @@ Answer ONLY JSON:
 {"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "app": null, "why": "short"}"""
 
 
+def _all(ctx: dict) -> list:
+    """Every element of the observation (normalize keeps them in all_elements); the top N as a fallback."""
+    return ctx.get("all_elements") or ctx.get("elements") or []
+
+
+def _truncation_note(ctx: dict) -> str:
+    if not ctx.get("truncated"):
+        return ""
+    return (f" (the screen list was truncated: the model saw {len(ctx.get('elements') or [])} of "
+            f"{ctx.get('total_elements') or len(_all(ctx))} elements; grounding searched all of them)")
+
+
+def _team1_element(step: str, ctx: dict):
+    """(element, grounding) when Team 1 grounded THIS step's target confidently and the element is in the list."""
+    g1 = ctx.get("grounding") or {}
+    if g1.get("status") != "grounded" or not g1.get("element_id"):
+        return None
+    if str(g1.get("target") or "").strip().lower() != str(step or "").strip().lower():
+        return None
+    el = next((e for e in _all(ctx) if e.get("id") == g1["element_id"]), None)
+    return (el, g1) if el is not None else None
+
+
 def _legacy(step: str, ctx: dict) -> dict:
     """Old behaviour (first-word parsing). Only when there is no model; always labelled."""
     from vision.ground import pick
     from graph.app_subgraph_legacy import action_for, action_params
-    g = pick(step, ctx.get("elements") or [])
+    team1 = _team1_element(step, ctx)              # F3: Team 1's GroundingResult wins when it is confident
+    if team1 is not None:
+        el, g1 = team1
+        return {"status": "ok", "action": action_for(step), "element": el,
+                "params": action_params(step, action_for(step), el),
+                "why": f"team1_grounding ({g1.get('method')}, confidence {g1.get('confidence')})",
+                "decider": "legacy_prefix"}
+    g = pick(step, _all(ctx))                      # F2: the FULL element list, not only the top N
     if g["status"] != "grounded":
-        return {"status": "unresolved", "why": f"legacy_ungrounded: {g['why']}"}
+        return {"status": "unresolved", "why": f"legacy_ungrounded: {g['why']}{_truncation_note(ctx)}"}
     action = action_for(step)
     return {"status": "ok", "action": action, "element": g["element"],
             "params": action_params(step, action, g["element"]),
@@ -57,10 +87,10 @@ def decide_action(step: str, app: str, node: str, ctx: dict, flag: str = None) -
         out = llm.chat_json(SYSTEM, user)
     except Exception as e:                                    # noqa: BLE001
         return {"status": "unresolved", "why": f"decider_error: {type(e).__name__}: {e}"}
-    return _from_model(out, ctx)
+    return _from_model(out, ctx, target=step)
 
 
-def _from_model(out, ctx: dict) -> dict:
+def _from_model(out, ctx: dict, target: str = None) -> dict:
     if not isinstance(out, dict):
         return {"status": "unresolved", "why": "decider_not_an_object"}
     action = (out.get("action") or "").lower()
@@ -72,11 +102,12 @@ def _from_model(out, ctx: dict) -> dict:
 
     element = None
     if action in NEEDS_ELEMENT:
-        by_id = {e.get("id"): e for e in (ctx.get("elements") or [])}
+        by_id = {e.get("id"): e for e in _all(ctx)}          # F2: look ids up in the FULL list
         element = by_id.get(out.get("element_id"))
         if element is None:
-            return {"status": "unresolved", "why": f"element_id {out.get('element_id')!r} is not on screen"}
-        if not is_usable(element):
+            return {"status": "unresolved",
+                    "why": f"element_id {out.get('element_id')!r} is not on screen{_truncation_note(ctx)}"}
+        if not usable_for(element, target):
             return {"status": "unresolved", "why": f"element {out.get('element_id')!r} not usable (clickable=False or not an interactive type)"}
 
     params = {}
@@ -134,4 +165,4 @@ def decide_next(app: str, node: str, flag: str, hints: list, history: list, ctx:
     if isinstance(out, dict) and str(out.get("action", "")).lower() == "finish":
         return {"status": "ok", "action": "finish", "element": None, "params": {},
                 "why": out.get("why") or "", "decider": "llm"}
-    return _from_model(out, ctx)
+    return _from_model(out, ctx, target=node)

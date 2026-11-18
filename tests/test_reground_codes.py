@@ -41,7 +41,8 @@ assert "wrong_window" in A.REGROUND_CODES and "stale" in A.REGROUND_CODES
 
 r = run_with("blocked", "wrong_window")
 assert r["status"] == "needs_regrounding" and "wrong_window" in r["error"], r
-assert len(A.desktop_adapter.calls) == 1, "the refused action must not be retried by the worker itself"
+# F4: the worker looks again (fresh capture + decision) up to NELLY_REGROUND_RETRIES times, then escalates
+assert len(A.desktop_adapter.calls) == 1 + A.reground_retries(), len(A.desktop_adapter.calls)
 assert r["steps_done"] == [], r                                     # a refused action is never a done step
 
 r = run_with("blocked", "stale")                                    # unchanged: stale is still a regrounding code

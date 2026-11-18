@@ -30,9 +30,10 @@ The first commit on the branch (`execution/team1: add Team 1 desktop and dry-run
 | 116–118 | `finally`: release modifiers if input was interrupted | Ctrl/Shift/Alt/Win must never stay held after an error, stop or refusal in the middle of input. Not done after a normal finish, so no extra key-ups are sent. |
 | 120–121 | `_live()` | `NELLY_LIVE_INPUT=1`, or the test-only fake-backend opt-in. |
 | 123–128 | `_release_modifiers()` | Calls `inputs.release_modifiers()` (falls back to `release_all()`), never raises. |
-| 297–299 | `Win32Windows.activate()` docstring | Updated: the Alt-tap fallback is gone. |
-| 321–323 | Removed the Alt key-tap fallback (`keybd_event(0x12, …)` down/up, then `SetForegroundWindow`) | That Alt key went to whatever window was in front. Only AttachThreadInput + SetForegroundWindow remain; if the window does not come forward, `activate()` returns False and the focus guard refuses (`wrong_window: focus_guard: …`). |
-| 507–508 | `PyAutoGuiInput.release_modifiers()` | Key-ups for Ctrl/Shift/Alt/Win only, no mouse events (`release_all()` also sends mouse-ups). |
+| 225–228 | `_resolve()`: strip the code from the TargetRejected text before `Blocked(code, detail)` | `str(TargetRejected)` already starts with the code, so errors read `stale: stale: …`; now `stale: …`. |
+| 300–302 | `Win32Windows.activate()` docstring | Updated: the Alt-tap fallback is gone. |
+| 324–326 | Removed the Alt key-tap fallback (`keybd_event(0x12, …)` down/up, then `SetForegroundWindow`) | That Alt key went to whatever window was in front. Only AttachThreadInput + SetForegroundWindow remain; if the window does not come forward, `activate()` returns False and the focus guard refuses (`wrong_window: focus_guard: …`). |
+| 510–511 | `PyAutoGuiInput.release_modifiers()` | Key-ups for Ctrl/Shift/Alt/Win only, no mouse events (`release_all()` also sends mouse-ups). |
 
 ## executor_dryrun.py
 
@@ -51,7 +52,7 @@ The first commit on the branch (`execution/team1: add Team 1 desktop and dry-run
   - On Windows 10, the Calculator window belongs to `applicationframehost.exe`, which is not listed, so input to Calculator is refused there.
 - `execution/team1/vision_path.py`: `ensure_vision_on_path()` returns None.
 - `execution/team1/__init__.py`: package marker.
-- `execution/team1_bridge.py` (outside this folder): translates our request and result format to your `ToolCall` / `ActionResult`.
+- `execution/team1_bridge.py` (outside this folder): translates our request and result format to your `ToolCall` / `ActionResult`. It also builds the live executor with `CoordinateManager(max_age_s=NELLY_MAX_OBS_AGE)` (your own parameter; your 15 s default when unset; your rule is unchanged), and refuses a target outside the named app's window before calling you (`target_outside_window`).
 
 ## Not changed
 
