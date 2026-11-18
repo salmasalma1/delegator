@@ -135,6 +135,8 @@ def normalize(obs: Optional[dict], source: str = "nelly_vision") -> dict:
         "quality": quality,
         "needs_review": not quality["clear"],
         "vision_source": source,
+        "window": obs.get("window"),        # process + bounds: the target guard checks clicks against them
+        "screen": obs.get("screen"),        # screenshot frame on the desktop (bbox_norm -> pixels)
     }
 
 

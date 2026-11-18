@@ -182,6 +182,14 @@ def execute(req: dict) -> dict:
     observation, rejected = _observation(req)
     if rejected:
         return _result(req, "failed", t0, dry, reject_code=rejected[0], error=rejected[1])
+    if call.target_element_id:
+        # F1: the target must lie inside the named app's window (product guard, also for direct callers)
+        from vision.target_guard import REASON, check_target                     # noqa: PLC0415
+        element = next((e for e in (observation or {}).get("elements") or []
+                        if e.get("id") == call.target_element_id), None)
+        inside, why_not = check_target(element or {"id": call.target_element_id}, observation, app, live=not dry)
+        if not inside:
+            return _result(req, "blocked", t0, dry, reject_code=REASON, error=why_not)
     try:
         res = _executor(dry).execute(call, observation=observation, stop=_ControlStop(), app=app)
     except Exception as e:                                                    # noqa: BLE001

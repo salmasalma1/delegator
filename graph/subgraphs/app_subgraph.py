@@ -15,6 +15,7 @@ except Exception:                                   # execution module not prese
     HAS_ADAPTER = False
 
 from vision.adapter import normalize, fake_observation, failed_context
+from vision.target_guard import check_target
 from vision.validate import validate_observation
 from vision import vision_adapter
 import os
@@ -153,6 +154,14 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
     Returns (ok, exec_result). ok=False means the worker must stop: sub_result already says why.
     """
     element = decision.get("element") or {}
+    # F1: a pointer target must lie inside the named app's window, or the request is never built or sent.
+    live = HAS_ADAPTER and getattr(desktop_adapter, "live_requested", lambda: False)()
+    inside, why_not = check_target(decision.get("element"), ctx, app, live=live)
+    if not inside:
+        sub_result["status"] = "needs_regrounding"
+        sub_result["error"] = why_not
+        sub_result["ungrounded_step"] = label
+        return False, None
     req = _build_request(decision, app, task_id)
 
     verdict = normalize_decision(safety.check(req))      # whatever it returns, only the frozen words count
