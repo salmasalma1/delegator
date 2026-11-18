@@ -121,7 +121,10 @@ def _act(req: dict) -> dict:
     return res
 
 
-REGROUND_CODES = ("stale", "window_resized", "window_gone", "window_minimized", "off_window", "stale_target")
+# Refusals that mean "the picture no longer matches the screen": the worker reports needs_regrounding (Verify then
+# escalates to the user) instead of failed. wrong_window: Team 1's focus guard (another window is in front).
+REGROUND_CODES = ("stale", "window_resized", "window_gone", "window_minimized", "off_window", "stale_target",
+                  "wrong_window")
 MAX_ACTIONS = int(os.getenv("NELLY_MAX_ACTIONS", "8"))     # the worker's leash per sub-goal
 STUCK_AFTER = 3                                             # same action this many times in a row = stuck
 
