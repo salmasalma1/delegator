@@ -61,13 +61,21 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
         if live:
             ctx["warnings"].append("fake vision with a live executor: refusing to act (unset NELLY_LIVE_INPUT)")
         return ctx
+    # F5: a live run always looks at the LIVE screen. A screenshot file has no window or monitor, so Team 1's
+    # window / DPI checks cannot run on it; files are for dry runs, tests and replays only.
+    ignored = None
+    if screenshot is not None and HAS_ADAPTER and getattr(desktop_adapter, "live_requested", lambda: False)():
+        ignored, screenshot = screenshot, None
     try:
-        raw = vision_adapter.observe(screenshot=screenshot, target=target)
+        raw = vision_adapter.observe(screenshot=screenshot, target=target)   # NELLY_VISION_TIMEOUT applies
     except Exception as e:                                   # noqa: BLE001
         print(f"[Vision] failed: {type(e).__name__}: {e}")
         return failed_context(f"vision_error:{type(e).__name__}: {e}")
     ok, errs = validate_observation(raw)
     ctx = normalize(raw, source="nelly_vision", target=target)
+    if ignored is not None:
+        ctx["warnings"].append(f"live run: screenshot file ignored ({os.path.basename(str(ignored))}), "
+                               "live screen captured instead")
     # F3: Team 1's GroundingResult for this target (the decider prefers it to our own word matching)
     ctx["grounding"] = getattr(vision_adapter, "last_grounding", lambda: None)()
     if not ok:
