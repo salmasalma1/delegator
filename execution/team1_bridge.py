@@ -19,7 +19,12 @@ Team 1's ActionResult -> our result (status words from our 04 schema, so the wor
 
 DRY RUN IS THE DEFAULT: Team 1's DryRunExecutor runs unless NELLY_LIVE_INPUT=1 (and NELLY_DRY_RUN is not set).
 Only then is Team 1's DesktopExecutor used, and it checks NELLY_LIVE_INPUT again itself.
+
+Needs Team 1's vision package (contracts, nelly_vision). This module imports neither at import time; without them
+execute() returns a failed result (reject_code team1_unavailable) and require() stops the program with a clear
+message. Nothing else in delegator imports this module unless NELLY_EXECUTOR=team1.
 """
+import importlib.util
 import os
 import threading
 import time
@@ -29,8 +34,31 @@ from graph import control
 TOOLS = {"click": "click_element", "type": "type_text", "press": "press_keys", "open_app": "open_app"}
 STATUS = {"ok": "success", "blocked": "blocked", "skipped": "cancelled", "error": "failed"}
 STRATEGY = {True: "team1_dryrun", False: "team1_desktop"}
+TEAM1_PACKAGES = ("contracts", "nelly_vision")
+TEAM1_MISSING = "NELLY_EXECUTOR=team1 needs Team 1's vision package (contracts, nelly_vision) installed"
 
 _executors = {}                 # one instance of each, created on first use (the desktop one remembers launches)
+
+
+class Team1Unavailable(SystemExit):
+    """Raised by require(). A SystemExit, so the program stops with just the message, not a traceback."""
+
+
+def available() -> bool:
+    """Team 1's packages can be imported here. Looks only (find_spec), imports nothing."""
+    for name in TEAM1_PACKAGES:
+        try:
+            if importlib.util.find_spec(name) is None:
+                return False
+        except (ImportError, ValueError):
+            return False
+    return True
+
+
+def require() -> None:
+    """Stop with a clear message when Team 1's vision package is missing (used by the NELLY_EXECUTOR switch)."""
+    if not available():
+        raise Team1Unavailable(TEAM1_MISSING)
 
 
 def live_requested() -> bool:
@@ -142,6 +170,8 @@ def from_action_result(req: dict, res, t0: float, dry: bool) -> dict:
 def execute(req: dict) -> dict:
     t0 = time.time()
     dry = not live_requested()
+    if not available():
+        return _result(req, "failed", t0, dry, reject_code="team1_unavailable", error=TEAM1_MISSING)
     if control.cancelled():
         return _result(req, "cancelled", t0, dry, error="stopped before acting")
     try:
