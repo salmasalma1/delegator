@@ -53,7 +53,7 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
     * not installed     -> FAKE screen, labelled fake in detector + warnings (dry runs / tests only)
     """
     if not vision_adapter.available():
-        ctx = normalize(fake_observation(app, target), source="fake")
+        ctx = normalize(fake_observation(app, target), source="fake", target=target)
         # A fake screen may only feed a DRY run. With a real input backend it must stop, never click fake coordinates.
         live = HAS_ADAPTER and desktop_adapter.live_requested() \
             and os.getenv("NELLY_ALLOW_FAKE_VISION", "") != "1"
@@ -67,7 +67,7 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
         print(f"[Vision] failed: {type(e).__name__}: {e}")
         return failed_context(f"vision_error:{type(e).__name__}: {e}")
     ok, errs = validate_observation(raw)
-    ctx = normalize(raw, source="nelly_vision")
+    ctx = normalize(raw, source="nelly_vision", target=target)
     if not ok:
         print(f"[Vision] contract violation: {errs[:3]}")
         ctx["warnings"].append(f"contract_violation:{errs[:2]}")

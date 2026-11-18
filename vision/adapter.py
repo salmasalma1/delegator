@@ -47,6 +47,44 @@ def is_usable(el: dict) -> bool:
     return (el.get("type") or "") in INTERACTIVE_TYPES
 
 
+# --- target matching (shared by normalize, grounding and the decider) ------------------
+
+STOP = {"the", "a", "an", "in", "on", "to", "of", "and", "then", "please", "with", "into"}
+# The action word a step usually starts with; it says what to do, not which element.
+ACTION_WORDS = {"type", "write", "enter", "paste", "click", "press", "open", "select", "save", "close",
+                "search", "send", "tap", "choose"}
+
+
+def tokens(s: Optional[str]) -> set:
+    import re
+    if not s:
+        return set()
+    return {t for t in re.split(r"[^a-z0-9]+", str(s).lower()) if len(t) > 1 and t not in STOP}
+
+
+def target_words(target: Optional[str]) -> set:
+    """The words that name the element: the step's tokens without its leading action word
+    ('click Save' -> {'save'}, 'save the file' -> {'file'})."""
+    import re
+    words = [t for t in re.split(r"[^a-z0-9]+", str(target or "").lower()) if len(t) > 1 and t not in STOP]
+    if words and words[0] in ACTION_WORDS:
+        words = words[1:]
+    return set(words)
+
+
+def matches_target(el: dict, target: Optional[str]) -> bool:
+    """The element's own text shares a naming word with the target."""
+    return bool(target_words(target) & tokens(el.get("text")))
+
+
+def usable_for(el: dict, target: Optional[str] = None) -> bool:
+    """is_usable(), plus: a `text` element with clickable=None is usable when its text matches the target
+    (Team 1 often returns a control's label only as OCR text, e.g. a menu bar line)."""
+    if is_usable(el):
+        return True
+    return (el.get("type") == "text" and el.get("clickable") in (None, "unknown") and matches_target(el, target))
+
+
 # --- quality gate -----------------------------------------------------------
 
 def assess_quality(obs: dict, elements: list) -> dict:
@@ -102,18 +140,21 @@ def assess_quality(obs: dict, elements: list) -> dict:
 
 # --- main entry -------------------------------------------------------------
 
-def normalize(obs: Optional[dict], source: str = "nelly_vision") -> dict:
+def normalize(obs: Optional[dict], source: str = "nelly_vision", target: Optional[str] = None) -> dict:
     """
     ScreenObservation (as a plain dict) -> the context the worker and the decider read.
-    Elements are Team 1's own dicts, untouched, only ordered and cut to the top N.
+    Elements are Team 1's own dicts, untouched, only ordered and cut to the top N for the model's prompt;
+    `all_elements` keeps the full list, which is what grounding searches. With a `target`, the elements whose
+    text matches it come first, so they are always among the N the model sees.
     Never raises: anything that is not an observation becomes needs_review.
     """
     if not isinstance(obs, dict):
         return failed_context("no_vision_payload", source)
 
     elements = [e for e in (obs.get("elements") or []) if isinstance(e, dict)]
-    # usable first, then the most confident; ties keep Team 1's reading order
-    ranked = sorted(enumerate(elements), key=lambda p: (not is_usable(p[1]),
+    # target matches first, then usable, then the most confident; ties keep Team 1's reading order
+    ranked = sorted(enumerate(elements), key=lambda p: (not matches_target(p[1], target),
+                                                       not usable_for(p[1], target),
                                                        -(p[1].get("confidence") or 0.0), p[0]))
     top = [e for _, e in ranked[:TOP_N]]
 
@@ -126,6 +167,8 @@ def normalize(obs: Optional[dict], source: str = "nelly_vision") -> dict:
         "app": window.get("process"),
         "window_title": window.get("title"),
         "elements": top,
+        "all_elements": elements,           # grounding searches all of them, not only the top N
+        "total_elements": len(elements),
         "truncated": len(elements) > TOP_N,
         "confidence": obs.get("confidence"),
         "detector": perception.get("detector"),
@@ -144,7 +187,7 @@ def failed_context(reason: str, source: str = "nelly_vision") -> dict:
     """A screen we could not read. The worker must stop and ask; it must never act on this."""
     return {
         "screenshot_id": None, "schema_version": None, "app": None, "window_title": None,
-        "elements": [], "truncated": False, "confidence": 0.0, "detector": None, "vlm_used": False,
+        "elements": [], "all_elements": [], "total_elements": 0, "truncated": False, "confidence": 0.0, "detector": None, "vlm_used": False,
         "warnings": [reason], "error": reason,
         "quality": {"clear": False, "score": 0.0, "reasons": [reason]},
         "needs_review": True, "vision_source": source,
