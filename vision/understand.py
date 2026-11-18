@@ -48,32 +48,23 @@ def _data_url(path: str) -> str:
 
 def understand(screenshot_path: str, grounding: Optional[dict] = None,
                model: str = "qwen3-vl-plus") -> dict:
-    """Ask the VLM what the screen means. Raises if no key / no image."""
-    key = os.getenv("DASHSCOPE_API_KEY", "")
-    if not key or "PUT_YOUR_KEY" in key:
-        raise RuntimeError("DASHSCOPE_API_KEY not set in delegator/.env")
-    from openai import OpenAI
-    client = OpenAI(api_key=key,
-                    base_url=os.getenv("DASHSCOPE_BASE_URL",
-                                       "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"))
+    """Ask the VLM what the screen means. Raises if no key / no image (same provider settings as llm.py)."""
+    import llm
+    if not llm.available():
+        raise RuntimeError("no LLM key: set NELLY_LLM_API_KEY in delegator/.env")
     hint = ""
     if grounding:
         hint = (f"\nvision grounding: app={grounding.get('app')} "
                 f"status={grounding.get('status')} "
                 f"elements={len(grounding.get('elements') or [])} "
                 f"quality={grounding.get('quality')}")
-    resp = client.chat.completions.create(
-        model=model,
-        temperature=0.1,
-        messages=[
-            {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": [
-                {"type": "text", "text": "Analyze this screen." + hint},
-                {"type": "image_url", "image_url": {"url": _data_url(screenshot_path)}},
-            ]},
-        ],
-    )
-    text = (resp.choices[0].message.content or "").strip()
+    text = llm.chat_text([
+        {"role": "system", "content": SYSTEM},
+        {"role": "user", "content": [
+            {"type": "text", "text": "Analyze this screen." + hint},
+            {"type": "image_url", "image_url": {"url": _data_url(screenshot_path)}},
+        ]},
+    ], model=model, temperature=0.1)
     m = re.search(r"\{.*\}", text, re.DOTALL)
     try:
         return json.loads(m.group(0) if m else text)

@@ -60,14 +60,43 @@ def _as_llm_error(exc: Exception, base_url: str):
     return None
 
 
+DEFAULT_BASE_URL = "https://dashscope-intl.aliyuncs.com/compatible-mode/v1"
+DEFAULT_MODEL = "qwen3-vl-plus"
+_NELLY_VARS = ("NELLY_LLM_API_KEY", "NELLY_LLM_BASE_URL", "NELLY_LLM_MODEL")
+
+
+def provider_settings() -> dict:
+    """THE provider settings, for every model call (planner, decider, plan check, VLM verifier, understand).
+    NELLY_LLM_* first. The legacy DASHSCOPE_* settings are used only when NO NELLY_LLM_* variable is set, so an old
+    DashScope key is never sent to a new provider. `model` is None when no model is configured."""
+    if any(os.getenv(k) for k in _NELLY_VARS):
+        return {"key": os.getenv("NELLY_LLM_API_KEY", ""),
+                "base_url": os.getenv("NELLY_LLM_BASE_URL") or DEFAULT_BASE_URL,
+                "model": os.getenv("NELLY_LLM_MODEL") or None, "source": "NELLY_LLM_*"}
+    return {"key": os.getenv("DASHSCOPE_API_KEY", ""),
+            "base_url": os.getenv("DASHSCOPE_BASE_URL") or DEFAULT_BASE_URL,
+            "model": None, "source": "DASHSCOPE_* (legacy)"}
+
+
 def _key() -> str:
-    """NELLY_LLM_API_KEY wins (any OpenAI-compatible provider); DASHSCOPE_API_KEY is the default."""
-    return os.getenv("NELLY_LLM_API_KEY") or os.getenv("DASHSCOPE_API_KEY", "")
+    return provider_settings()["key"]
 
 
 def _base_url() -> str:
-    return (os.getenv("NELLY_LLM_BASE_URL") or os.getenv("DASHSCOPE_BASE_URL")
-            or "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+    return provider_settings()["base_url"]
+
+
+def startup_lines() -> list:
+    """What run.py prints at start: provider host and model (never the key), and a warning when a base URL is set
+    without a model (the built-in default model would be sent to that provider)."""
+    st = provider_settings()
+    model = st["model"] or f"{DEFAULT_MODEL} (built-in default)"
+    lines = [f"[startup] LLM: provider host {_host(st['base_url'])}, model {model}, settings from {st['source']}"
+             + ("" if available() else "; NO KEY (planning needs one)")]
+    if os.getenv("NELLY_LLM_BASE_URL") and not os.getenv("NELLY_LLM_MODEL"):
+        lines.append(f"[startup] WARNING: NELLY_LLM_BASE_URL is set but NELLY_LLM_MODEL is not: the built-in "
+                     f"default model {DEFAULT_MODEL!r} would be sent to {_host(st['base_url'])}. Set NELLY_LLM_MODEL.")
+    return lines
 
 
 def available() -> bool:
@@ -95,7 +124,7 @@ def chat_text(messages: list, model: str = "qwen3-vl-plus", temperature: float =
     import openai
     base_url = _base_url()
     client = openai.OpenAI(api_key=_key(), base_url=base_url, timeout=llm_timeout())
-    model = os.getenv("NELLY_LLM_MODEL") or model          # one switch to try another provider's model
+    model = provider_settings()["model"] or model           # NELLY_LLM_MODEL wins over the caller's default
     try:
         resp = client.chat.completions.create(model=model, temperature=temperature, messages=messages)
     except Exception as e:                                   # noqa: BLE001

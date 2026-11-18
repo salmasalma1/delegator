@@ -76,10 +76,10 @@ class VLMVerifier(Verifier):
     name = "vlm"
 
     def __init__(self, model: str = "qwen3-vl-plus"):
-        self.model = model
-        self.key = os.getenv("DASHSCOPE_API_KEY", "")
-        self.base_url = os.getenv("DASHSCOPE_BASE_URL",
-                                  "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+        import llm                                   # one place for provider settings (NELLY_LLM_* first)
+        st = llm.provider_settings()
+        self.key, self.base_url = st["key"], st["base_url"]
+        self.model = st["model"] or model
 
     def available(self) -> bool:
         return bool(self.key) and "PUT_YOUR_KEY" not in self.key
@@ -94,16 +94,14 @@ class VLMVerifier(Verifier):
             v["reason"] += ";no_api_key"
             return v
 
+        import llm
         from vision.understand import _data_url
-        from openai import OpenAI
-        client = OpenAI(api_key=self.key, base_url=self.base_url)
         ctx = ""
         if grounding:
             ctx = (f"\nBefore-action screen: app={grounding.get('app')} "
                    f"elements={[e.get('text') for e in (grounding.get('elements') or [])[:8]]}")
-        resp = client.chat.completions.create(
-            model=self.model, temperature=0.1,
-            messages=[
+        try:
+            text = llm.chat_text([
                 {"role": "system", "content": SYSTEM},
                 {"role": "user", "content": [
                     {"type": "text",
@@ -111,9 +109,11 @@ class VLMVerifier(Verifier):
                              f"Step that ran: {node.get('steps')}{ctx}"},
                     {"type": "image_url", "image_url": {"url": _data_url(after_screenshot)}},
                 ]},
-            ],
-        )
-        text = (resp.choices[0].message.content or "").strip()
+            ], model=self.model, temperature=0.1)
+        except (llm.LLMUnavailable, llm.LLMError) as e:
+            v = RuleVerifier().verify(node, sub_result, grounding)
+            v["reason"] += f";vlm_error:{getattr(e, 'kind', 'no_key')}"
+            return v
         m = re.search(r"\{.*\}", text, re.DOTALL)
         try:
             out = json.loads(m.group(0) if m else text)
@@ -132,11 +132,13 @@ class VLMVerifier(Verifier):
 
 
 def get_verifier() -> Verifier:
-    """NELLY_VERIFIER=rule forces offline; default is VLM when a key exists."""
-    choice = os.getenv("NELLY_VERIFIER", "").lower()
-    if choice == "rule":
-        return RuleVerifier()
-    vlm = VLMVerifier()
-    if choice == "vlm" or vlm.available():
-        return vlm
+    """The VLM verifier runs only when NELLY_VERIFIER is "vlm", or unset with a key (same key as llm.py).
+    "rule" or any other value -> the offline rule verifier."""
+    choice = os.getenv("NELLY_VERIFIER", "").strip().lower()
+    if choice == "vlm":
+        return VLMVerifier()
+    if choice == "":
+        vlm = VLMVerifier()
+        if vlm.available():
+            return vlm
     return RuleVerifier()
