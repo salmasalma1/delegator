@@ -1,79 +1,51 @@
-# Orchestrator with Delegation
+# NELLY Plan Validator - Team Handoff Pack
 
-orchestration and plannin of NELLY, a voice/text Windows desktop agent that works by lookin at the
-screen. The Orchestrator plans, a Delegator carries each sub-goal to a worker, the worker does it, and every
-sub-goal is verified before the next one starts.
+**Status:** Draft v0.1 for team review  
+**Date:** 2026-11-18  
+**Scope:** Director plan validation before Delegator execution
 
+This pack defines a compatibility-first proposal for a deterministic Plan Validator. It is designed around the current normalized Director Node shape observed in the Delegator repository. It is **not yet an implementation** and must be approved by the team before becoming a runtime contract.
+
+## Files
+
+- `docs/PLAN_VALIDATOR_DESIGN_SPEC.md` - design, architecture, responsibilities, and decisions.
+- `docs/VALIDATION_RULES.md` - rule catalogue with stable rule IDs.
+- `docs/INTEGRATION_CONTRACT.md` - proposed runtime integration and fail-safe behavior.
+- `schemas/director-plan-v1.schema.json` - JSON Schema for current normalized Director output.
+- `schemas/plan-validation-report-v1.schema.json` - JSON Schema for validation output.
+- `examples/valid-director-plan.json` - illustrative valid plan (placeholder app/worker values; verify against the real registry).
+- `tests/VALIDATION_TEST_MATRIX.md` - test scenarios required before enabling the gate.
+- `DECISIONS.md` - unresolved team decisions; do not silently assume these are settled.
+
+## Important compatibility notes
+
+1. The v1 input is a **JSON array of Nodes**, matching the current normalized Director output described during repository review. It does not require a new `{plan_id, task_id, version, nodes}` envelope.
+2. The known normalized Node fields are `id`, `node`, `app`, `worker`, `flag`, `steps`, `depends_on`, and `resource`.
+3. `steps` is interpreted as high-level natural-language intent/hints. The Worker owns screen-aware low-level execution strategy and action selection.
+4. `flag` is retained as an opaque compatibility field. The Validator must not infer risk, authorization, or approval from it until its meaning and allowed values are documented.
+5. Runtime fields such as `status` and `history` are deliberately not part of the Director input schema. Validate the plan before runtime mutation, or define a separate runtime-state schema.
+6. This pack does not claim that repository files have been modified. Add these files to the repository only after team review and integration checks.
+
+## Suggested destination in the repository
+
+```text
+docs/
+  PLAN_VALIDATOR_DESIGN_SPEC.md
+  VALIDATION_RULES.md
+  INTEGRATION_CONTRACT.md
+schemas/
+  director-plan-v1.schema.json
+  plan-validation-report-v1.schema.json
+examples/
+  valid-director-plan.json
+tests/
+  VALIDATION_TEST_MATRIX.md
 ```
-TaskRequest -> Director (plan) -> Plan check -> Delegate -> Worker -> Verify step -> next | replan | escalate -> Finalize
-```
 
-## Layout
+## Review process
 
-| Path | Role |
-|---|---|
-| `gateway/gateway.py` | Text -> normalized `TaskRequest` (language detected); voice is a stub that refuses until Whisper is wired |
-| `gateway/session.py` | One conversation: stop command, answers to questions, new task per request, Ctrl+C |
-| `gateway/report.py` | End-of-task report in the user's language; never says "done" unless the state says so |
-| `graph/control.py` | The stop switch, checked between nodes and before every worker action |
-| `reasoning.py`, `planner.py` | The planner's brain (Qwen `qwen3-vl-plus`): request -> nodes with flags; validated, one self-correction, no silent fallback |
-| `graph/builder.py` | Wires the graph: director -> plan_check -> delegate -> verify_step -> (delegate / director / escalate / finalize) |
-| `graph/state.py` | `AgentState` (declare every new state key here) |
-| `graph/nodes/director.py` | Plans; on replan keeps verified nodes and re-plans from the failed one |
-| `graph/nodes/plan_check.py` | Checks the plan matches the request before anything runs |
-| `graph/nodes/delegate.py` | Runs ONE node via the worker (carrier, no LLM) |
-| `graph/subgraphs/app_subgraph.py` | The worker: look -> decide one action -> safety -> act, in a loop (steps are hints) |
-| `graph/action_decider.py` | LLM picks one allowed action and an on-screen element id; invalid answers are rejected |
-| `graph/safety_port.py` | The only door to the machine: frozen decision words (approved / rejected / needs_user_approval / blocked), approval scopes, run-bound approver, proposal hash. Team 3's Dispatcher plugs in via `NELLY_SAFETY_MODULE` (mock until then) |
-| `graph/nodes/verify.py`, `verifier.py` | Per-node verify (VLM on a fresh screenshot, rule fallback) and finalize |
-| `persistence/` | Checkpoint/audit seam: redaction, then Team 3's `db_helpers` store (shim fallback) |
-| `execution/desktop_adapter.py` | INTERIM executor (click / type / press via pyautogui) until Team 1 delivers theirs. **Dry run by default**; real input only with `NELLY_LIVE_INPUT=1`. Never computes pixels itself: the click point comes from Team 1's coordinate manager (`vision_adapter.resolve_point`, not wired yet). Mouse to a screen corner = stop |
-| `vision/` | Team 1 ScreenObservation 0.3 used as-is (`bbox_norm` = [x1,y1,x2,y2], `clickable`); `vision_adapter.py` is the only file that imports their package; quality gate; labelled FAKE screen when vision is not installed (dry runs only) |
-| `schemas/`, `specs/` | Frozen contracts and integration notes |
-| `tools/` | Smoke tests |
-
-## Run
-
-```bash
-pip install -r requirements.txt
-cp .env.example .env          # then put your own DASHSCOPE_API_KEY in .env (never commit it)
-python run.py "your task"     # one task
-python run.py                 # interactive: type a task, "stop" or Ctrl+C stops it, "exit" leaves
-```
-
-Input is text for now (voice is not wired). If a run ends with a question for you, your next message is the answer.
-
-With no `DASHSCOPE_API_KEY` the system still runs, but honestly: the planner cannot plan (it fails instead of
-guessing), the plan check and verifier are marked `skipped`/rule-only, and the worker uses the legacy
-one-action-per-step parser. Anything not really executed is reported as `dry_run`, never `completed`.
-
-## Settings (environment variables)
-
-| Variable | Meaning |
-|---|---|
-| `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | Qwen access |
-| `NELLY_VERIFIER=rule` | Force the offline structural verifier |
-| `NELLY_MAX_ACTIONS` | Worker leash per sub-goal (default 8) |
-| `NELLY_ACTION_DECIDER=legacy` | Force the old prefix parser |
-| `NELLY_SAFETY_MODULE` | Module exposing `check(request)` for the real Safety |
-| `NELLY_POLICY_MODE` | `standard` (ask only the always-ask list) or `strict` (also ask above low risk) |
-| `NELLY_APP_ALLOWLIST` | Comma list of apps that need no approval (default: the Safety schema's apps); any other app always asks |
-| `NELLY_NO_PROMPT=1` | Never ask on the terminal: a run that needs approval pauses |
-| `NELLY_CHECKPOINT_MODULE`, `NELLY_REQUIRE_STORE=1` | Which store to import; fail instead of using the shim |
-| `NELLY_PERSIST=0` | Turn persistence off |
-| `NELLY_GRAPH_DB` | LangGraph checkpoint file (separate from the store's `agent.db`) |
-
-## Design rules
-
-- One planner. The Delegator never plans or judges.
-- A node's `steps` are hints; the worker decides each real action from the live screen.
-- The worker never judges success: Verify does, on a fresh screenshot.
-- Replans are capped (2). A plan that does not match the request is re-planned once, then escalated.
-- Skipped, mocked or legacy behaviour is always labelled, never hidden.
-- Safety fails closed: an unknown decision or a crashing module is a block, and with no approver bound a run pauses and says why.
-- What runs is exactly what was approved: the request's hash is stored and re-checked before acting.
-- Two levels are recorded: the plan node (status, round, verdict) and each action (decision, approval, result).
-
-### Model provider
-Default: DashScope (Qwen). To try any OpenAI-compatible provider set `NELLY_LLM_API_KEY`, `NELLY_LLM_BASE_URL`, `NELLY_LLM_MODEL`
-(they win over the DashScope variables). The screenshot-based Verify needs a vision model; with a text-only model set `NELLY_VERIFIER=rule`.
+1. Agree on all entries in `DECISIONS.md`.
+2. Confirm schema compatibility against real planner output and normalized Nodes.
+3. Implement schema parsing and deterministic structural rules.
+4. Add rule tests and verify invalid plans never reach the Delegator.
+5. Integrate with the existing semantic Plan Check without treating `skipped` as `passed`.
