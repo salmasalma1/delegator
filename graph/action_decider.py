@@ -43,10 +43,28 @@ def _truncation_note(ctx: dict) -> str:
             f"{ctx.get('total_elements') or len(_all(ctx))} elements; grounding searched all of them)")
 
 
+def _team1_element(step: str, ctx: dict):
+    """(element, grounding) when Team 1 grounded THIS step's target confidently and the element is in the list."""
+    g1 = ctx.get("grounding") or {}
+    if g1.get("status") != "grounded" or not g1.get("element_id"):
+        return None
+    if str(g1.get("target") or "").strip().lower() != str(step or "").strip().lower():
+        return None
+    el = next((e for e in _all(ctx) if e.get("id") == g1["element_id"]), None)
+    return (el, g1) if el is not None else None
+
+
 def _legacy(step: str, ctx: dict) -> dict:
     """Old behaviour (first-word parsing). Only when there is no model; always labelled."""
     from vision.ground import pick
     from graph.app_subgraph_legacy import action_for, action_params
+    team1 = _team1_element(step, ctx)              # F3: Team 1's GroundingResult wins when it is confident
+    if team1 is not None:
+        el, g1 = team1
+        return {"status": "ok", "action": action_for(step), "element": el,
+                "params": action_params(step, action_for(step), el),
+                "why": f"team1_grounding ({g1.get('method')}, confidence {g1.get('confidence')})",
+                "decider": "legacy_prefix"}
     g = pick(step, _all(ctx))                      # F2: the FULL element list, not only the top N
     if g["status"] != "grounded":
         return {"status": "unresolved", "why": f"legacy_ungrounded: {g['why']}{_truncation_note(ctx)}"}

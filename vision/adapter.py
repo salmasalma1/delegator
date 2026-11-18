@@ -232,6 +232,10 @@ def to_prompt(ctx: Optional[dict], limit: int = TOP_N) -> str:
         box = [round(v, 2) for v in (e.get("bbox_norm") or [])]
         lines.append(f"{e.get('id')} {e.get('type')} {e.get('text')!r} {box} "
                      f"conf={e.get('confidence')} clickable={e.get('clickable')}")
+    g = ctx.get("grounding") or {}
+    if g.get("element_id"):                                   # F3: Team 1's own answer for the target
+        lines.append(f"vision grounding for {g.get('target')!r}: {g['element_id']} ({g.get('status')}, "
+                     f"confidence {g.get('confidence')})")
     if ctx.get("warnings"):
         lines.append(f"warnings={ctx['warnings']}")
     return "\n".join(lines)

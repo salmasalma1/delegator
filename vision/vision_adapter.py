@@ -64,8 +64,16 @@ def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
     if data.get("schema_version") != "0.3":
         raise ValueError(f"expected ScreenObservation 0.3, got schema_version={data.get('schema_version')!r}")
     # what the coordinate manager needs later to turn a box into a click point
-    _last[0] = {"observation": obs, "screen": screen, "window": window, "screenshot_id": data.get("screenshot_id")}
+    grounding = getattr(res, "grounding", None)          # F3: Team 1's own answer for `target`, when it gives one
+    _last[0] = {"observation": obs, "screen": screen, "window": window, "screenshot_id": data.get("screenshot_id"),
+                "grounding": grounding.model_dump(mode="json") if grounding is not None else None}
     return data
+
+
+def last_grounding():
+    """Team 1's GroundingResult (as a dict) for the target of the last observe() call, or None."""
+    last = _last[0]
+    return (last or {}).get("grounding")
 
 
 def resolve_point(element_id, bbox_norm, observation_id=None):

@@ -68,6 +68,8 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
         return failed_context(f"vision_error:{type(e).__name__}: {e}")
     ok, errs = validate_observation(raw)
     ctx = normalize(raw, source="nelly_vision", target=target)
+    # F3: Team 1's GroundingResult for this target (the decider prefers it to our own word matching)
+    ctx["grounding"] = getattr(vision_adapter, "last_grounding", lambda: None)()
     if not ok:
         print(f"[Vision] contract violation: {errs[:3]}")
         ctx["warnings"].append(f"contract_violation:{errs[:2]}")
