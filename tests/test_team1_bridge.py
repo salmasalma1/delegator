@@ -1,9 +1,27 @@
 """Team 1 executor bridge. Never moves the mouse or types: dry run, or FAKE window / input backends that only
-record what they were asked to do. NELLY_LIVE_INPUT is removed from the environment first."""
+record what they were asked to do. NELLY_LIVE_INPUT is removed from the environment first.
+Needs Team 1's vision package; without it the script reports SKIP (counted by tests/run_all.py), not FAIL."""
+import importlib.util
 import os
 import subprocess
 import sys
 import types
+
+
+def _missing_team1():
+    """The first of Team 1's packages that cannot be imported here, or None. Looks only, imports nothing."""
+    for name in ("contracts", "nelly_vision"):
+        try:
+            if importlib.util.find_spec(name) is None:
+                return name
+        except (ImportError, ValueError):
+            return name
+    return None
+
+
+if _missing_team1():
+    print(f"SKIP test_team1_bridge.py: Team 1 vision package ({_missing_team1()}) is not installed")
+    sys.exit(0)
 
 os.environ.pop("NELLY_LIVE_INPUT", None)
 os.environ["NELLY_DRY_RUN"] = "1"
