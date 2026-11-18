@@ -1,0 +1,92 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nelly.local/schemas/director-plan-v1.schema.json",
+  "title": "NELLY Director Plan (Compatibility Draft v1)",
+  "description": "Validates the current normalized Director output before delegation. This is intentionally based on the existing Node shape; it does not introduce new planning fields.",
+  "type": "array",
+  "minItems": 1,
+  "maxItems": 50,
+  "items": {
+    "$ref": "#/$defs/directorNode"
+  },
+  "$defs": {
+    "directorNode": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "node",
+        "app",
+        "worker",
+        "flag",
+        "steps",
+        "depends_on",
+        "resource"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "node": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "app": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 128
+        },
+        "worker": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "flag": {
+          "type": [
+            "boolean",
+            "integer",
+            "string",
+            "null"
+          ]
+        },
+        "steps": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 6,
+          "description": "High-level natural-language hints only; not screen-specific click/keypress instructions or executable code.",
+          "items": {
+            "oneOf": [
+              {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000
+              },
+              {
+                "type": "object"
+              }
+            ]
+          }
+        },
+        "depends_on": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          }
+        },
+        "resource": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128
+        }
+      }
+    }
+  }
+}

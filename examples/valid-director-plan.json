@@ -1,0 +1,30 @@
+[
+  {
+    "id": "node-001",
+    "node": "Open the requested website",
+    "app": "browser",
+    "worker": "browser_worker",
+    "flag": null,
+    "steps": [
+      "Navigate to the website named by the user.",
+      "Confirm that the expected page is visible."
+    ],
+    "depends_on": [],
+    "resource": "browser"
+  },
+  {
+    "id": "node-002",
+    "node": "Extract the requested information",
+    "app": "browser",
+    "worker": "browser_worker",
+    "flag": null,
+    "steps": [
+      "Locate the relevant information on the page.",
+      "Return the extracted information with supporting evidence."
+    ],
+    "depends_on": [
+      "node-001"
+    ],
+    "resource": "browser"
+  }
+]
