@@ -73,6 +73,17 @@ class _ControlStop(threading.Event):
         return super().is_set() or control.cancelled()
 
 
+def _coords():
+    """F7: Team 1's CoordinateManager with the age limit from NELLY_MAX_OBS_AGE (its max_age_s parameter; Team 1's
+    default 15 s when unset). Team 1's rule itself is unchanged."""
+    from nelly_vision.coordinates import CoordinateManager                    # noqa: PLC0415
+    try:
+        max_age = float(os.getenv("NELLY_MAX_OBS_AGE", "15"))
+    except ValueError:
+        max_age = 15.0
+    return CoordinateManager(max_age_s=max_age)
+
+
 def _executor(dry: bool):
     key = "dry" if dry else "desktop"
     if key not in _executors:
@@ -81,7 +92,7 @@ def _executor(dry: bool):
             _executors[key] = DryRunExecutor()
         else:
             from execution.team1.executor_desktop import DesktopExecutor      # noqa: PLC0415
-            _executors[key] = DesktopExecutor()
+            _executors[key] = DesktopExecutor(coords=_coords())               # F7: our age limit, Team 1's rule
     return _executors[key]
 
 
