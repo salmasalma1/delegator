@@ -31,6 +31,9 @@ def main(argv):
     quiet = os.getenv("NELLY_QUIET") == "1"
     from vision.env_check import print_startup_warnings      # F6: detector / memory (read-only, no secrets)
     print_startup_warnings()
+    import llm                                               # provider host + model in use (never the key)
+    for line in llm.startup_lines():
+        print(line)
     session = Session(on_event=None if quiet else _progress)
 
     if argv:

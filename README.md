@@ -36,14 +36,14 @@ TaskRequest -> Director (plan) -> Plan check -> Delegate -> Worker -> Verify ste
 
 ```bash
 pip install -r requirements.txt
-cp .env.example .env          # then put your own DASHSCOPE_API_KEY in .env (never commit it)
+cp .env.example .env          # then put your own NELLY_LLM_API_KEY, NELLY_LLM_BASE_URL, NELLY_LLM_MODEL in .env (never commit it)
 python run.py "your task"     # one task
 python run.py                 # interactive: type a task, "stop" or Ctrl+C stops it, "exit" leaves
 ```
 
 Input is text for now (voice is not wired). If a run ends with a question for you, your next message is the answer.
 
-With no `DASHSCOPE_API_KEY` the system still runs, but honestly: the planner cannot plan (it fails instead of
+With no model key (`NELLY_LLM_API_KEY`, or the legacy `DASHSCOPE_API_KEY`) the system still runs, but honestly: the planner cannot plan (it fails instead of
 guessing), the plan check and verifier are marked `skipped`/rule-only, and the worker uses the legacy
 one-action-per-step parser. Anything not really executed is reported as `dry_run`, never `completed`.
 
@@ -53,8 +53,13 @@ The full list, with defaults, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). 
 
 | Variable | Meaning |
 |---|---|
-| `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | Qwen access |
-| `NELLY_VERIFIER=rule` | Force the offline structural verifier |
+| `NELLY_LLM_API_KEY` | Model key (any OpenAI-compatible provider). In `.env` only, never committed or printed |
+| `NELLY_LLM_BASE_URL` | The provider's API address. Set `NELLY_LLM_MODEL` with it (start-up warning otherwise) |
+| `NELLY_LLM_MODEL` | The model name at that provider |
+| `NELLY_LLM_TIMEOUT` | Seconds to wait for the model (default 60); then a clear error, not a hang |
+| `NELLY_VERIFIER` | `rule` = offline structural verifier; `vlm` = screenshot check with the model above; unset = vlm only when a key exists |
+| `NELLY_DETECTOR_WEIGHTS` | Path to Team 1's trained detector (`best.pt`); start-up warning when missing |
+| `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | **Legacy.** Used only when no `NELLY_LLM_*` variable is set |
 | `NELLY_MAX_ACTIONS` | Worker leash per sub-goal (default 8) |
 | `NELLY_ACTION_DECIDER=legacy` | Force the old prefix parser |
 | `NELLY_SAFETY_MODULE` | Module exposing `check(request)` for the real Safety |
@@ -77,5 +82,5 @@ The full list, with defaults, is in [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md). 
 - Two levels are recorded: the plan node (status, round, verdict) and each action (decision, approval, result).
 
 ### Model provider
-Default: DashScope (Qwen). To try any OpenAI-compatible provider set `NELLY_LLM_API_KEY`, `NELLY_LLM_BASE_URL`, `NELLY_LLM_MODEL`
+Set `NELLY_LLM_API_KEY`, `NELLY_LLM_BASE_URL` and `NELLY_LLM_MODEL` for any OpenAI-compatible provider; every model call (planner, decider, plan check, VLM verifier) uses the same settings, and `run.py` prints the provider host and model at start (never the key). The DashScope variables are legacy, used only when no `NELLY_LLM_*` is set
 (they win over the DashScope variables). The screenshot-based Verify needs a vision model; with a text-only model set `NELLY_VERIFIER=rule`.
