@@ -1,3 +1,4 @@
+# Adapted from the Team 1 executor, with their permission. All changes are marked CHANGED(team2).
 """The desktop executor: the only code that moves the mouse or presses keys.
 
 Safety rules, in order, before any input:
@@ -10,17 +11,24 @@ Safety rules, in order, before any input:
 """
 from __future__ import annotations
 
+import os  # CHANGED(team2): read NELLY_LIVE_INPUT / NELLY_DRY_RUN for the dry-run default
 import threading
 import time
 from typing import Any, Protocol
 
-from .. import apps
-from ..contracts import ActionResult, ToolCall
-from ..vision_path import ensure_vision_on_path
+from . import apps  # CHANGED(team2): local shim execution/team1/apps.py instead of the parent package
+from contracts import ActionResult, ToolCall  # CHANGED(team2): Team 1's installed contracts package, not ..contracts
+from .vision_path import ensure_vision_on_path  # CHANGED(team2): local no-op shim (Team 1 is on the path via .pth)
 
 POINTER = {"click_element": "left", "double_click_element": "double", "right_click_element": "right",
            "triple_click_element": "triple"}
 KEY_MAP = {"win": "winleft"}
+FOCUS_CODES = ("focus_guard", "focus_changed")  # CHANGED(team2): reported as wrong_window, the Team 2 reject code
+
+
+def live_requested() -> bool:  # CHANGED(team2): real input only when NELLY_LIVE_INPUT=1 (and NELLY_DRY_RUN not set)
+    on = lambda k: os.getenv(k, "").strip().lower() in ("1", "true", "yes")  # noqa: E731
+    return on("NELLY_LIVE_INPUT") and not on("NELLY_DRY_RUN")
 
 
 class Blocked(Exception):
@@ -47,7 +55,11 @@ class Input(Protocol):
 class DesktopExecutor:
     def __init__(self, *, windows: Windows | None = None, inputs: Input | None = None, coords: Any = None,
                  launch_timeout_s: float = 8.0, poll_s: float = 0.2, launch_settle_s: float = 1.0,
-                 focus_settle_s: float = 0.3, sleep=time.sleep):
+                 focus_settle_s: float = 0.3, sleep=time.sleep,
+                 fake_backends_live: bool = False):  # CHANGED(team2): test-only opt-in, see self._fakes_live
+        # CHANGED(team2): tests may run the input logic on injected FAKE backends without NELLY_LIVE_INPUT;
+        # the opt-in is ignored unless BOTH backends are injected, so the real backends always need NELLY_LIVE_INPUT=1.
+        self._fakes_live = bool(fake_backends_live and windows is not None and inputs is not None)
         self.windows = windows or Win32Windows()
         self.inputs = inputs or PyAutoGuiInput()
         self.coords = coords
@@ -63,8 +75,11 @@ class DesktopExecutor:
         before = observation.get("screenshot_id") if observation else None
         base = dict(call_id=call.call_id, tool=call.tool, before_id=before, target_element_id=call.target_element_id)
         point = None
+        sent, done = False, False  # CHANGED(team2): input may have been sent / finished normally (see finally)
         try:
             self._check_stop(stop)
+            if call.tool != "wait" and not self._live():  # CHANGED(team2): dry run by default, nothing is sent
+                raise Blocked("dry_run", "real input is off: set NELLY_LIVE_INPUT=1 to act (nothing was sent)")
             if call.tool == "open_app":
                 note = self._open_app(call.args["name"], stop)
                 self._wait(self.launch_settle_s, stop)       # a just-launched app drops keys until it is ready
@@ -73,18 +88,44 @@ class DesktopExecutor:
             if call.tool == "wait":
                 self._wait(float(call.args["seconds"]), stop)
                 return ActionResult(status="ok", **base)
+            if not app:  # CHANGED(team2): no application -> refuse (was: any unprotected window in front got the input)
+                raise Blocked("no_application", f"{call.tool} needs an application; none was given")
+            if not apps.processes_for(app):  # CHANGED(team2): unknown application -> refuse (same hole as no app)
+                raise Blocked("unknown_app", f"{app!r} is not a known application ({', '.join(apps.PROCESSES)})")
             self._focus(app, observation, pointer=call.target_element_id is not None)
             if call.target_element_id is not None:
                 point = self._resolve(observation, call.target_element_id)
             self._check_stop(stop)
+            sent = True  # CHANGED(team2)
             self._act(call, point, stop)
+            done = True  # CHANGED(team2)
             self.log.append({"tool": call.tool, "app": app, "point": point.xy if point else None})
             return ActionResult(status="ok", screen_point=point.xy if point else None, **base)
         except Blocked as exc:
+            if exc.code in FOCUS_CODES:  # CHANGED(team2): report as wrong_window; the original code stays in the detail
+                return ActionResult(status="blocked", error=f"wrong_window: {exc}", **base)
             return ActionResult(status="blocked", error=str(exc), **base)
         except Stopped:
             self.release_all()
             return ActionResult(status="skipped", error="stopped by the user", **base)
+        except Exception as exc:  # CHANGED(team2): catch everything, an executor must never raise into the caller
+            if type(exc).__name__ == "FailSafeException":  # pyautogui corner fail-safe: the user stopped it
+                return ActionResult(status="skipped", error="stopped by the user (mouse moved to a screen corner)",
+                                    **base)
+            return ActionResult(status="error", error=f"{type(exc).__name__}: {exc}", **base)
+        finally:
+            if sent and not done:  # CHANGED(team2): input was interrupted, Ctrl/Shift/Alt/Win may still be held
+                self._release_modifiers()
+
+    def _live(self) -> bool:  # CHANGED(team2): NELLY_LIVE_INPUT=1, or the test-only opt-in with fake backends
+        return live_requested() or self._fakes_live
+
+    def _release_modifiers(self) -> None:  # CHANGED(team2): key-ups for Ctrl/Shift/Alt/Win only, never raises
+        try:
+            release = getattr(self.inputs, "release_modifiers", None)
+            (release or self.inputs.release_all)()
+        except Exception:
+            pass
 
     def release_all(self) -> None:
         self.inputs.release_all()
@@ -253,8 +294,9 @@ class Win32Windows:
         return found
 
     def activate(self, hwnd: int) -> bool:
+        # CHANGED(team2): docstring updated, the Alt-tap fallback is removed (see below)
         """Bring a window forward from a background process: attach to the foreground thread's input, then
-        SetForegroundWindow; fall back to the Alt-tap rule Windows applies to background processes."""
+        SetForegroundWindow. No key is sent; returns False when Windows does not let the window come forward."""
         import win32api
         import win32con
         import win32gui
@@ -276,14 +318,8 @@ class Win32Windows:
         except Exception:
             pass
         time.sleep(0.15)
-        if win32gui.GetForegroundWindow() != hwnd:
-            try:
-                win32api.keybd_event(0x12, 0, 0, 0)       # Alt down / up
-                win32api.keybd_event(0x12, 0, 2, 0)
-                win32gui.SetForegroundWindow(hwnd)
-                time.sleep(0.15)
-            except Exception:
-                pass
+        # CHANGED(team2): removed the Alt key-tap fallback (keybd_event 0x12): that Alt went to whatever window was in
+        # front. If AttachThreadInput + SetForegroundWindow did not work, report False and the focus guard refuses.
         return win32gui.GetForegroundWindow() == hwnd
 
     def launch(self, target: str, args: str = "") -> None:
@@ -467,6 +503,9 @@ class PyAutoGuiInput:
             self.gui.scroll(clicks if direction == "up" else -clicks)
         else:
             self.gui.hscroll(clicks if direction == "right" else -clicks)
+
+    def release_modifiers(self) -> None:  # CHANGED(team2): Ctrl/Shift/Alt/Win key-ups only, no mouse events
+        self.keys.release_modifiers()
 
     def release_all(self) -> None:
         try:
