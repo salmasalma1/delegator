@@ -25,9 +25,11 @@ from graph.safety_port import (get_safety, classify, proposal_hash, normalize_de
                                APPROVED, NEEDS_USER_APPROVAL)
 
 # Opt-in: NELLY_EXECUTOR=team1 runs Team 1's executor through execution/team1_bridge.py (same execute() and
-# live_requested() as desktop_adapter). Default: our interim executor, execution/desktop_adapter.py.
+# live_requested() as desktop_adapter). Default: our interim executor, execution/desktop_adapter.py; the default
+# never imports execution.team1 or the bridge. Without Team 1's vision package, require() stops with a clear message.
 if HAS_ADAPTER and os.getenv("NELLY_EXECUTOR", "").strip().lower() == "team1":
     from execution import team1_bridge as desktop_adapter
+    desktop_adapter.require()
 
 
 class AppSubState(TypedDict, total=False):
