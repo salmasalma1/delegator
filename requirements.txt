@@ -8,3 +8,7 @@ openai==3.37.0
 # interim executor (execution/desktop_adapter.py); only needed for real clicks
 pyautogui>=0.9.54
 pyperclip>=1.8   # optional: typing non-ASCII text (Arabic)
+
+# Team 1 executor (execution/team1/, via NELLY_EXECUTOR=team1); versions as in .venv
+psutil==7.2.2
+pywin32==312; sys_platform == "win32"

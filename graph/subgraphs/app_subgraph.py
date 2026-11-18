@@ -24,6 +24,11 @@ from graph.action_decider import decide_action, decide_next
 from graph.safety_port import (get_safety, classify, proposal_hash, normalize_decision,
                                APPROVED, NEEDS_USER_APPROVAL)
 
+# Opt-in: NELLY_EXECUTOR=team1 runs Team 1's executor through execution/team1_bridge.py (same execute() and
+# live_requested() as desktop_adapter). Default: our interim executor, execution/desktop_adapter.py.
+if HAS_ADAPTER and os.getenv("NELLY_EXECUTOR", "").strip().lower() == "team1":
+    from execution import team1_bridge as desktop_adapter
+
 
 class AppSubState(TypedDict, total=False):
     app: str
