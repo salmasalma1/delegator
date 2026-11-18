@@ -99,6 +99,8 @@ def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
 
 
 def _observe_once(screenshot=None, target=None, allow_vlm: bool = False, gen=None) -> dict:
+    from vision.env_check import ensure_memory_for_ocr                   # noqa: PLC0415
+    ensure_memory_for_ocr()                 # F6: below the safe level OCR is never started (it crashed the process)
     from nelly_vision.capture import capture_screen, new_screenshot_id   # noqa: PLC0415
     p = _get()
     if screenshot is None:

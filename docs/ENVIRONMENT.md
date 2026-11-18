@@ -1,0 +1,69 @@
+# Environment variables
+
+Every setting the delegator reads, in one place. All of them are optional; the default is in brackets.
+Secrets (API keys) belong in `.env`, which is never committed. Never paste their values into logs or issues.
+
+## Safety: real input and approvals
+
+| Variable | Meaning |
+|---|---|
+| `NELLY_LIVE_INPUT` | `1` = real mouse and keyboard. [unset = **dry run**: nothing is clicked or typed] |
+| `NELLY_DRY_RUN` | `1` = force a dry run, even if `NELLY_LIVE_INPUT=1` (tests set it). |
+| `NELLY_POLICY_MODE` | `standard` (ask only for the always-ask list) or `strict` (also ask for anything above low risk). [standard] |
+| `NELLY_APP_ALLOWLIST` | Comma list of apps that need no approval. [the Safety schema's apps] |
+| `NELLY_SAFETY_MODULE` | Importable module with `check(request)`: Team 3's real Safety. [mock policy] |
+| `NELLY_EXECUTOR` | `team1` = run Team 1's executor through `execution/team1_bridge.py`. [our interim executor] |
+
+## Vision (Team 1)
+
+| Variable | Meaning |
+|---|---|
+| `NELLY_DETECTOR_WEIGHTS` | Path to the trained detector (`best.pt`). Without it Team 1's vision may fall back to weak edge proposals; a start-up warning says so. |
+| `NELLY_VISION` | `off` / `0` / `fake` = do not use Team 1's vision (labelled fake screen, dry runs only). |
+| `NELLY_ALLOW_FAKE_VISION` | `1` = allow the fake screen even with live input (not recommended). |
+| `NELLY_VISION_TIMEOUT` | Seconds one vision call may take before the step stops as needs_review. `0` = no limit. [180] |
+| `NELLY_MIN_FREE_MEM_GB` | Free memory (RAM + page file) below which OCR is never started (it crashed the process when memory was low). [3] |
+| `NELLY_MAX_OBS_AGE` | Maximum age in seconds of an observation used for a click (our resolver and, through the bridge, Team 1's executor). [15] |
+| `NELLY_OCR_LANGS`, `NELLY_DETECTOR_IMGSZ` | Read by Team 1's vision package itself (OCR languages, detector input size). |
+
+## Worker
+
+| Variable | Meaning |
+|---|---|
+| `NELLY_MAX_ACTIONS` | Actions the worker may take per sub-goal. [8] |
+| `NELLY_REGROUND_RETRIES` | Fresh looks after a "the screen changed" refusal (stale, window_*, wrong_window) before escalating. [2] |
+| `NELLY_ACTION_DECIDER` | `legacy` = force the no-model prefix parser. |
+| `NELLY_VERIFIER` | `rule` = force the offline structural verifier. |
+
+## Interim executor (`execution/desktop_adapter.py`)
+
+| Variable | Meaning |
+|---|---|
+| `NELLY_ACTION_PAUSE` | Pause between pyautogui actions, seconds. [0.4] |
+| `NELLY_SETTLE` | Wait before the after-action screenshot, seconds. [0.6] |
+| `NELLY_OPEN_WAIT` | Wait after open_app, seconds. [2.5] |
+| `NELLY_SHOTS_DIR` | Folder for after-action screenshots. [system temp folder] |
+
+## Model (LLM)
+
+| Variable | Meaning |
+|---|---|
+| `NELLY_LLM_API_KEY`, `NELLY_LLM_BASE_URL`, `NELLY_LLM_MODEL` | Any OpenAI-compatible provider (they win over the DashScope variables). Key in `.env` only. |
+| `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | The default provider. Key in `.env` only. |
+
+## Store, persistence and output
+
+| Variable | Meaning |
+|---|---|
+| `NELLY_PERSIST` | `0` = turn persistence off. |
+| `NELLY_DB` | The store's database file. [agent.db] |
+| `NELLY_DB_BACKEND` | Force a store backend. |
+| `NELLY_CHECKPOINT_MODULE` | Which store module to import. |
+| `NELLY_REQUIRE_STORE` | `1` = fail instead of using the built-in shim. |
+| `NELLY_STORE_PATH`, `NELLY_STORE_PATH_CAPABLE` | Where the team store lives, and whether it accepts a path. |
+| `NELLY_GRAPH_DB` | LangGraph checkpoint file (separate from the store). |
+| `NELLY_QUIET` | `1` = `run.py` prints no progress. |
+
+## Start-up checks
+
+`run.py` prints a `[startup] WARNING` line when `NELLY_DETECTOR_WEIGHTS` is not set or points to a missing file, and when free memory is below `NELLY_MIN_FREE_MEM_GB`. The checks only read; they never start a model and never print a secret.
