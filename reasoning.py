@@ -137,6 +137,8 @@ class QwenProvider(StrategyProvider):
                 out = llm.chat_json(SYSTEM, user + note, model=self.model, temperature=0.2)
             except llm.LLMUnavailable as e:
                 raise PlanError(f"planner has no model: {e}") from e
+            except llm.LLMError as e:                         # 401 / 429 / timeout / unreachable: end clearly
+                raise PlanError(f"planner cannot use the model: {e}") from None
             except ValueError as e:                           # not JSON
                 problems = [str(e)]
                 continue

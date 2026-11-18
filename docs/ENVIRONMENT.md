@@ -49,6 +49,7 @@ Secrets (API keys) belong in `.env`, which is never committed. Never paste their
 | Variable | Meaning |
 |---|---|
 | `NELLY_LLM_API_KEY`, `NELLY_LLM_BASE_URL`, `NELLY_LLM_MODEL` | Any OpenAI-compatible provider (they win over the DashScope variables). Key in `.env` only. |
+| `NELLY_LLM_TIMEOUT` | Seconds to wait for the model's answer before the call fails with a clear error. [60] |
 | `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | The default provider. Key in `.env` only. |
 
 ## Store, persistence and output
