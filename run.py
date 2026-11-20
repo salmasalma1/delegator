@@ -1,6 +1,7 @@
 """Run NELLY (text).
 
     python run.py "your task"      one task, then exit
+    python run.py --trace "task"   same, and also write runs/run_<id>.json + .html (see gateway/trace.py)
     python run.py                  interactive: type a task; type stop / exit
 
 Ctrl+C stops the task before its next action.
@@ -27,7 +28,18 @@ def _progress(event: dict):
             print(f"     plan check: ok={v.get('ok')} via={v.get('method')} {v.get('reason') or ''}".rstrip())
 
 
+def _trace(out):
+    from gateway.trace import write_trace
+    paths = write_trace(out.get("state") or {}, out.get("report"))
+    if "error" in paths:
+        print(f"trace not written: {paths['error']}")
+    else:
+        print(f"trace: {paths['json']}\nviewer: {paths['html']}  (open it in a browser)")
+
+
 def main(argv):
+    trace = "--trace" in argv or os.getenv("NELLY_TRACE") == "1"
+    argv = [a for a in argv if a != "--trace"]
     quiet = os.getenv("NELLY_QUIET") == "1"
     from vision.env_check import print_startup_warnings      # F6: detector / memory (read-only, no secrets)
     print_startup_warnings()
@@ -39,6 +51,8 @@ def main(argv):
     if argv:
         out = session.submit(" ".join(argv))
         print(out["text"])
+        if trace and out.get("kind") == "report":
+            _trace(out)
         status = out["report"]["status"]
         return {"completed": 0, "dry_run": 3}.get(status, 1)      # a dry run is not a success
 
@@ -58,6 +72,8 @@ def main(argv):
         if out["kind"] == "exit":
             return 0
         print(out["text"])
+        if trace and out.get("kind") == "report":
+            _trace(out)
 
 
 if __name__ == "__main__":

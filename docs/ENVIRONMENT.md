@@ -64,6 +64,9 @@ Secrets (API keys) belong in `.env`, which is never committed. Never paste their
 | `NELLY_STORE_PATH`, `NELLY_STORE_PATH_CAPABLE` | Where the team store lives, and whether it accepts a path. |
 | `NELLY_GRAPH_DB` | LangGraph checkpoint file (separate from the store). |
 | `NELLY_QUIET` | `1` = `run.py` prints no progress. |
+| `NELLY_TRACE` | `1` = same as `python run.py --trace`: write `runs/run_<id>.json` and `.html` (the run viewer page). |
+| `NELLY_TRACE_DIR` | Folder for the trace files. [runs] |
+| `NELLY_TRACE_FULL` | `1` keeps window titles and screen text in the trace. Default: hidden. Such a file is private; clean it before showing it. |
 
 ## Start-up checks
 
