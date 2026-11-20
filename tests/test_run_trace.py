@@ -58,3 +58,9 @@ def test_html_is_self_contained_and_safe(tmp_path):
     assert (tmp_path / "latest.html").exists() and (tmp_path / "index.html").exists()
     idx = (tmp_path / "index.html").read_text(encoding="utf-8")
     assert "run_t1.html" in idx and "<b>x</b>" not in idx                # the task text is escaped
+
+
+def test_timeline_is_carried_into_the_trace():
+    rows = [{"step": "director", "info": "plan with 1 node(s)", "at_seconds": 1.2}]
+    t = build_trace(_state(), {}, timeline=rows)
+    assert t["timeline"] == rows

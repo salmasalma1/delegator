@@ -63,7 +63,7 @@ def _clean_look(look: dict, full: bool) -> dict:
     return out
 
 
-def build_trace(state: dict, report: dict = None, full: bool = None) -> dict:
+def build_trace(state: dict, report: dict = None, full: bool = None, timeline: list = None) -> dict:
     full = _full() if full is None else full
     report = report or {}
     sub_results = state.get("sub_results") or []
@@ -114,6 +114,7 @@ def build_trace(state: dict, report: dict = None, full: bool = None) -> dict:
         "final": report.get("headline"),
         "question": report.get("question"),
         "escalation": esc or None,
+        "timeline": timeline or [],
         "redacted": not full,
     }
 
@@ -123,12 +124,13 @@ def _is_dry(state: dict) -> bool:
         or (state.get("status") == "dry_run")
 
 
-def write_trace(state: dict, report: dict = None, out_dir: str = None, html: bool = True) -> dict:
+def write_trace(state: dict, report: dict = None, out_dir: str = None, html: bool = True,
+                timeline: list = None) -> dict:
     """Writes runs/run_<task_id>.json (+ .html). Returns the paths. Never raises into a run."""
     out_dir = out_dir or os.getenv("NELLY_TRACE_DIR") or "runs"
     try:
         os.makedirs(out_dir, exist_ok=True)
-        trace = build_trace(state, report)
+        trace = build_trace(state, report, timeline=timeline)
         base = os.path.join(out_dir, f"run_{trace.get('task_id') or 'x'}")
         with open(base + ".json", "w", encoding="utf-8") as f:
             json.dump(trace, f, ensure_ascii=False, indent=2, default=str)

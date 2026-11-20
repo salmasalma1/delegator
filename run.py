@@ -30,7 +30,7 @@ def _progress(event: dict):
 
 def _trace(out):
     from gateway.trace import write_trace
-    paths = write_trace(out.get("state") or {}, out.get("report"))
+    paths = write_trace(out.get("state") or {}, out.get("report"), timeline=out.get("timeline"))
     if "error" in paths:
         print(f"trace not written: {paths['error']}")
     else:

@@ -314,6 +314,13 @@ pre{margin:6px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:
     if(m.notes){var w=h('div','panel');w.appendChild(h('h2',null,'Warnings'));
       var arr=Array.isArray(m.notes)?m.notes:[m.notes];var l=h('div','sec-list');arr.forEach(function(x){l.appendChild(h('div',null,'• '+short(x,300)))});w.appendChild(l);wrap.appendChild(w)}
 
+    var tl=pick(m.raw,['timeline']);
+    if(Array.isArray(tl)&&tl.length){
+      var tp=h('div','panel');tp.appendChild(h('h2',null,'Progress (what ran, in order)'));
+      var tx=h('div','acts');
+      tl.forEach(function(r){var row=h('div','act');row.appendChild(h('span','tag','+'+(r.at_seconds!=null?r.at_seconds:'?')+' s'));row.appendChild(h('span',null,(r.step||'?')+(r.info?'  '+r.info:'')));tx.appendChild(row)});
+      tp.appendChild(tx);wrap.appendChild(tp);
+    }
     if(m.nodes.length){
       var nd=h('div');nd.appendChild(h('h2',null,'Plan and results'));
       var list=h('div','nodes');m.nodes.forEach(function(n){list.appendChild(nodeEl(n))});

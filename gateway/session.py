@@ -13,6 +13,7 @@ What it adds on top of the graph:
 """
 import re
 import sys
+import time
 import uuid
 
 from gateway.gateway import normalize_task
@@ -36,6 +37,22 @@ def parse_command(text: str):
     if t in EXIT_WORDS:
         return "exit"
     return None
+
+
+def _timeline_row(event: dict, secs: float) -> dict:
+    """One progress line for the run viewer: which graph step ran, and one short fact about it."""
+    node = next(iter(event), "?")
+    u = event.get(node) if isinstance(event.get(node), dict) else {}
+    if node == "director" and u.get("nodes"):
+        info = f"plan with {len(u['nodes'])} node(s)"
+    elif node == "plan_check" and u.get("plan_verdict"):
+        v = u["plan_verdict"]
+        info = f"plan check ok={v.get('ok')} via={v.get('method')}"
+    elif node == "delegate":
+        info = "worker ran one node"
+    else:
+        info = str(u.get("status") or "")
+    return {"step": node, "info": info, "at_seconds": round(secs, 1)}
 
 
 class Session:
@@ -84,9 +101,11 @@ class Session:
         init = normalize_task(goal, source="text", session_id=self.session_id)
         config = {"configurable": {"thread_id": init["task_id"]}}
         self.running = True
+        timeline, t0 = [], time.time()
         try:
             with safety_port.bind_approver(self.approver):
                 for event in self.graph.stream(init, config=config):
+                    timeline.append(_timeline_row(event, time.time() - t0))
                     if self.on_event:
                         self.on_event(event)
             final = dict(self.graph.get_state(config).values)
@@ -102,4 +121,4 @@ class Session:
         if report["needs_user"]:
             self.pending = {"goal": goal, "question": report["question"]}
         self.history.append(report)
-        return {"kind": "report", "report": report, "text": render(report), "state": final}
+        return {"kind": "report", "report": report, "text": render(report), "state": final, "timeline": timeline}
