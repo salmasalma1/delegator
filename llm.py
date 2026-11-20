@@ -37,6 +37,18 @@ def llm_timeout() -> float:
         return DEFAULT_TIMEOUT_S
 
 
+DEFAULT_RETRIES = 2
+
+
+def llm_retries() -> int:
+    """NELLY_LLM_RETRIES: how many times the client retries a failed call (503, timeout, connection). Default 2, max 8."""
+    try:
+        v = int(os.getenv("NELLY_LLM_RETRIES", DEFAULT_RETRIES))
+        return min(max(v, 0), 8)
+    except ValueError:
+        return DEFAULT_RETRIES
+
+
 def _host(url: str) -> str:
     from urllib.parse import urlparse
     return urlparse(url or "").netloc or "unknown host"
@@ -123,7 +135,7 @@ def chat_text(messages: list, model: str = "qwen3-vl-plus", temperature: float =
         raise LLMUnavailable("no API key: set NELLY_LLM_API_KEY (or the legacy DASHSCOPE_API_KEY)")
     import openai
     base_url = _base_url()
-    client = openai.OpenAI(api_key=_key(), base_url=base_url, timeout=llm_timeout())
+    client = openai.OpenAI(api_key=_key(), base_url=base_url, timeout=llm_timeout(), max_retries=llm_retries())
     model = provider_settings()["model"] or model           # NELLY_LLM_MODEL wins over the caller's default
     try:
         resp = client.chat.completions.create(model=model, temperature=temperature, messages=messages)
