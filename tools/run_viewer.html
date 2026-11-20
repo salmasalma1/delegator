@@ -1,48 +1,48 @@
 <title>NELLY Run Viewer</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <style>
-/* Layout: one narrow column. Top = run summary, then one card per plan node, then the final report. */
+/* Layout: pink banner on top, then run summary, one card per plan node (with what vision saw), final result. */
 :root{
-  --bg:#f6f7f9; --panel:#ffffff; --fg:#161a22; --muted:#5b6475; --line:#dde1e8;
-  --accent:#2f5bd8;
-  --ok:#17803d; --ok-bg:#e3f4e9;
-  --claim:#2f5bd8; --claim-bg:#e5ecfd;
-  --sim:#9a5b00; --sim-bg:#fdf0d6;
-  --bad:#c0262d; --bad-bg:#fbe4e5;
-  --wait:#6b4bb8; --wait-bg:#eee8fa;
-  --idle:#5b6475; --idle-bg:#e8ebf0;
+  --bg:#fff1f8; --panel:#ffffff; --fg:#3a1230; --muted:#8a5b78; --line:#f6c9e0;
+  --accent:#e0218a; --accent-fg:#ffffff; --hero-a:#ff62ac; --hero-b:#e0218a; --shadow:0 2px 12px rgba(224,33,138,.10);
+  --ok:#0f8a4f; --ok-bg:#def5e8;
+  --claim:#5b4bd8; --claim-bg:#e8e5fd;
+  --sim:#a35a00; --sim-bg:#fff0cf;
+  --bad:#c3123a; --bad-bg:#ffe0e6;
+  --wait:#8a3fc0; --wait-bg:#f1e3fb;
+  --idle:#8a5b78; --idle-bg:#f7e6f0;
   --mono:ui-monospace,Consolas,monospace;
   --sans:system-ui,-apple-system,"Segoe UI",sans-serif;
 }
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --bg:#12151b; --panel:#1a1f28; --fg:#e6e9ef; --muted:#9aa3b5; --line:#2c3340;
-  --accent:#7d9bff;
-  --ok:#5fd187; --ok-bg:#16301f; --claim:#8fabff; --claim-bg:#1c2848;
-  --sim:#f0b955; --sim-bg:#3a2d12; --bad:#ff7b80; --bad-bg:#3d1a1d;
-  --wait:#b9a3f5; --wait-bg:#2a2146; --idle:#9aa3b5; --idle-bg:#242a35; color-scheme:dark}}
+  --bg:#24101f; --panel:#34182c; --fg:#ffe9f5; --muted:#d9a3c4; --line:#5a2a4a;
+  --accent:#ff6fb5; --accent-fg:#2a0b1f; --hero-a:#a3156a; --hero-b:#6d1049; --shadow:none;
+  --ok:#6fe0a0; --ok-bg:#173a28; --claim:#b3a8ff; --claim-bg:#2b2660;
+  --sim:#ffc15e; --sim-bg:#473210; --bad:#ff8fa6; --bad-bg:#4a1722;
+  --wait:#d9a8ff; --wait-bg:#3a2256; --idle:#d9a3c4; --idle-bg:#432339; color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#12151b; --panel:#1a1f28; --fg:#e6e9ef; --muted:#9aa3b5; --line:#2c3340;
-  --accent:#7d9bff;
-  --ok:#5fd187; --ok-bg:#16301f; --claim:#8fabff; --claim-bg:#1c2848;
-  --sim:#f0b955; --sim-bg:#3a2d12; --bad:#ff7b80; --bad-bg:#3d1a1d;
-  --wait:#b9a3f5; --wait-bg:#2a2146; --idle:#9aa3b5; --idle-bg:#242a35; color-scheme:dark}
+  --bg:#24101f; --panel:#34182c; --fg:#ffe9f5; --muted:#d9a3c4; --line:#5a2a4a;
+  --accent:#ff6fb5; --accent-fg:#2a0b1f; --hero-a:#a3156a; --hero-b:#6d1049; --shadow:none;
+  --ok:#6fe0a0; --ok-bg:#173a28; --claim:#b3a8ff; --claim-bg:#2b2660;
+  --sim:#ffc15e; --sim-bg:#473210; --bad:#ff8fa6; --bad-bg:#4a1722;
+  --wait:#d9a8ff; --wait-bg:#3a2256; --idle:#d9a3c4; --idle-bg:#432339; color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font:14px/1.5 var(--sans);margin:0}
 .wrap{max-width:860px;margin:0 auto;padding-block:20px 48px;
   padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
   display:flex;flex-direction:column;gap:16px}
-h1{font-size:20px;margin:0;font-weight:600;letter-spacing:-.01em}
+h1{font-size:22px;margin:0;font-weight:700;letter-spacing:-.01em;color:#fff}
 h2{font-size:12px;margin:0 0 8px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:600}
-.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:14px 16px;min-width:0}
+.top{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:16px 20px;border-radius:18px;background:linear-gradient(135deg,var(--hero-a),var(--hero-b));color:#fff;box-shadow:var(--shadow)}
+.top .note{color:rgba(255,255,255,.88)}
+.top a{color:#fff;font-weight:600}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:14px 16px;min-width:0}
 .controls{display:flex;flex-direction:column;gap:10px}
 .row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-button,.btn{font:inherit;font-size:13px;padding:6px 12px;border-radius:6px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
+button,.btn{font:inherit;font-size:13px;padding:6px 14px;border-radius:99px;border:1px solid var(--line);background:var(--panel);color:var(--fg);cursor:pointer}
 button:hover,.btn:hover{border-color:var(--accent)}
 button:focus-visible,.btn:focus-within,textarea:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
-button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
-:root[data-theme="dark"] button.primary{color:#0b1020}
-@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) button.primary{color:#0b1020}}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
 input[type=file]{position:absolute;opacity:0;width:1px;height:1px}
 textarea{width:100%;min-height:90px;font:12px/1.5 var(--mono);background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:6px;padding:8px;resize:vertical}
 label.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--muted)}
@@ -66,7 +66,7 @@ label.chk{display:flex;gap:6px;align-items:center;font-size:13px;color:var(--mut
 .s-escalated,.s-needs_input,.s-awaiting_approval,.s-running{background:var(--wait-bg);color:var(--wait)}
 .s-pending,.s-cancelled,.s-superseded,.s-skipped,.s-unknown{background:var(--idle-bg);color:var(--idle)}
 .nodes{display:flex;flex-direction:column;gap:10px}
-.node{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;min-width:0;display:flex;flex-direction:column;gap:8px}
+.node{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:12px 14px;min-width:0;display:flex;flex-direction:column;gap:8px}
 .node.dry{border-style:dashed;border-color:var(--sim)}
 .nh{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .nid{font:500 12px var(--mono);color:var(--muted)}
@@ -103,13 +103,12 @@ pre{margin:6px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:
 <div class="wrap" id="root">
   <div class="top">
     <h1>NELLY Run Viewer</h1>
-    <span class="note">Reads a run JSON in your browser. Nothing is uploaded.</span>
+    <span class="note"><a href="index.html" id="all-runs">All runs</a> · Reads the run in your browser, nothing is uploaded.</span>
   </div>
 
   <div class="panel controls no-shot" id="controls">
     <div class="row">
       <label class="btn">Open run file<input type="file" id="file" accept=".json,.txt,application/json"></label>
-      <button id="sample">Load fake sample</button>
       <button id="paste-toggle">Paste JSON</button>
       <span class="sp"></span>
       <label class="chk"><input type="checkbox" id="priv"> Show evidence and OCR text</label>
@@ -294,7 +293,6 @@ pre{margin:6px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:
   function render(data,isSample){
     out.textContent='';msg.textContent='';
     var m=normalize(data);
-    if(isSample){msg.appendChild(h('div','banner','FAKE SAMPLE. Invented data to show the layout. This is not a real NELLY run.'))}
     var wrap=h('div');wrap.style.cssText='display:flex;flex-direction:column;gap:16px';
 
     var sum=h('div','panel');
@@ -343,31 +341,19 @@ pre{margin:6px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:
     out.appendChild(wrap);
   }
 
+  function empty(){
+    out.textContent='';msg.textContent='';
+    var p=h('div','panel');p.appendChild(h('h2',null,'No run loaded'));
+    p.appendChild(h('div',null,'Open a run file (runs/run_<id>.json) with the button above, drop it here, or paste its JSON.'));
+    p.appendChild(h('div','note','Make one with:  python run.py --trace "your task"'));
+    out.appendChild(p);
+  }
+
   function show(text,isSample){
     try{render(parse(text),isSample)}
     catch(e){out.textContent='';msg.textContent='';msg.appendChild(h('div','banner err',e.message+' Check the file and try again.'))}
   }
 
-  var SAMPLE={
-    task:"Open Notepad and type the word hello",
-    execution_mode:"dry_run",executor:"team1 (dry run)",run_id:"sample-0001",replans:0,
-    plan_warnings:["Unknown plan field 'priority' ignored (sample)."],
-    nodes:[
-      {id:"n1",app:"notepad",worker:"native",resource:"desktop",flag:"A Notepad window is open and its text area is empty.",steps:["Launch Notepad","Wait for the window"],status:"dry_run",
-       actions:[{safety:"approved",action:"open_app",target:"notepad",result:"dry_run"}],
-       looks:[{source:"fake",detector:"fake",total_elements:1,seconds:0.0,quality:{score:0.82,clear:true,reasons:[]},warnings:["FAKE SCREEN (sample)"],
-         elements:[{id:"e1",type:"button",text:"[hidden]",bbox_norm:[0.31,0.45,0.39,0.5],confidence:0.82}]}],evidence:"(sample OCR text would appear here)"},
-      {id:"n2",app:"notepad",worker:"native",resource:"desktop",depends_on:["n1"],flag:"The text area shows the word hello.",steps:["Click the text area","Type hello"],status:"dry_run",
-       actions:[{safety:"needs_user_approval",action:"click",target:"text area",result:"dry_run"},{safety:"approved",action:"type",target:"hello",result:"dry_run"}]},
-      {id:"n3",app:"explorer",worker:"native",resource:"desktop",depends_on:["n2"],flag:"A File Explorer window shows the Documents folder.",steps:["Open Explorer"],status:"blocked",
-       actions:[{safety:"blocked",action:"open_app",target:"explorer",result:"system rule (sample)"}],error:"Blocked by a safety rule. No question was asked."},
-      {id:"n4",app:"calculator",worker:"native",resource:"desktop",depends_on:["n3"],flag:"Calculator shows the number 4.",steps:["Open Calculator"],status:"pending"}
-    ],
-    final:"Sample only. 2 nodes simulated, 1 blocked, 1 not reached. Nothing was verified.",
-    final_status:"failed"
-  };
-
-  $('sample').onclick=function(){render(SAMPLE,true)};
   $('paste-toggle').onclick=function(){var b=$('paste-box');b.hidden=!b.hidden};
   $('render').onclick=function(){show($('ta').value,false)};
   function readFile(f){if(!f)return;var r=new FileReader();r.onload=function(){show(String(r.result),false)};r.onerror=function(){show('',false)};r.readAsText(f)}
@@ -384,6 +370,6 @@ pre{margin:6px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:
   document.addEventListener('keydown',function(e){if(e.key==='Escape'){root.classList.remove('shot')}});
 
   var EMBEDDED=[/*__RUN_DATA__*/][0];
-  if(EMBEDDED)render(EMBEDDED,false);else render(SAMPLE,true);
+  if(EMBEDDED)render(EMBEDDED,false);else empty();
 })();
 </script>

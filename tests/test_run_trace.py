@@ -54,4 +54,7 @@ def test_html_is_self_contained_and_safe(tmp_path):
     assert "nelly.run_trace.v1" in page and "</script><b>" not in page
     assert "https://" not in page.replace("https://claude.ai", "")      # no network, no fonts, no CDN
     assert "/*__RUN_DATA__*/" not in page
-    assert "FAKE SAMPLE" in make_html(None)                              # sample page stays labelled
+    assert "FAKE SAMPLE" not in make_html(None)                          # no invented data in the page
+    assert (tmp_path / "latest.html").exists() and (tmp_path / "index.html").exists()
+    idx = (tmp_path / "index.html").read_text(encoding="utf-8")
+    assert "run_t1.html" in idx and "<b>x</b>" not in idx                # the task text is escaped

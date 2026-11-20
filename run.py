@@ -34,7 +34,7 @@ def _trace(out):
     if "error" in paths:
         print(f"trace not written: {paths['error']}")
     else:
-        print(f"trace: {paths['json']}\nviewer: {paths['html']}  (open it in a browser)")
+        print(f"trace: {paths['json']}\nviewer: {paths['html']}  (open it in a browser)\nall runs: {paths['index']}   newest: runs\\latest.html")
 
 
 def main(argv):

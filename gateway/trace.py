@@ -3,6 +3,7 @@ Run trace: one JSON file that shows what the brain and the vision did in a run.
 
     python run.py --trace "your task"      -> runs/run_<task_id>.json  and  runs/run_<task_id>.html
     python tools/run_viewer.py runs/run_X.json                         -> the same page from a saved file
+    runs/latest.html = the newest run, runs/index.html = every run (rebuilt after each run)
 
 It only RESTATES the final state. It never upgrades a status: `dry_run` stays `dry_run`, `succeeded`
 stays "the worker's claim", and only Verify's `verified` is shown as verified.
@@ -133,10 +134,16 @@ def write_trace(state: dict, report: dict = None, out_dir: str = None, html: boo
             json.dump(trace, f, ensure_ascii=False, indent=2, default=str)
         paths = {"json": base + ".json"}
         if html:
-            from tools.run_viewer import make_html
+            from tools.run_viewer import make_html, make_index
+            page = make_html(trace)
             with open(base + ".html", "w", encoding="utf-8") as f:
-                f.write(make_html(trace))
+                f.write(page)
+            with open(os.path.join(out_dir, "latest.html"), "w", encoding="utf-8") as f:
+                f.write(page)
+            with open(os.path.join(out_dir, "index.html"), "w", encoding="utf-8") as f:
+                f.write(make_index(out_dir))
             paths["html"] = base + ".html"
+            paths["index"] = os.path.join(out_dir, "index.html")
         return paths
     except Exception as e:                                   # noqa: BLE001
         return {"error": f"{type(e).__name__}: {e}"}
