@@ -25,6 +25,7 @@ def delegate_node(state: AgentState) -> dict:
             screenshot=state.get("screenshot"), scenario=state.get("vision_scenario"),
             flag=node.get("flag"), max_actions=node.get("max_actions"),
         )
+    result = {**result, "node_id": node.get("id"), "round": state.get("plan_round", 1)}   # for the run trace
     # The verifier reads state["after_screenshot"]. Without this the VLM verifier never runs.
     # Reset it every node so a stale screenshot from the previous node is never judged.
     after = (result.get("last_execution_result") or {}).get("screenshot_after_ref")

@@ -5,6 +5,8 @@ Calls Team 1 vision through vision.vision_adapter when it is installed; otherwis
 FAKE screen. Both go through vision.adapter so the worker sees ONE shape (Team 1's ScreenObservation 0.3).
 """
 from typing import TypedDict, Optional
+import os
+import time
 import uuid
 
 try:
@@ -15,10 +17,12 @@ except Exception:                                   # execution module not prese
     HAS_ADAPTER = False
 
 from vision.adapter import normalize, fake_observation, failed_context
+from gateway.trace import look_summary
 from vision.target_guard import check_target
 from vision.validate import validate_observation
 from vision import vision_adapter
 import os
+import time
 import llm
 from graph import control
 from graph.action_decider import decide_action, decide_next
@@ -66,6 +70,7 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
     ignored = None
     if screenshot is not None and HAS_ADAPTER and getattr(desktop_adapter, "live_requested", lambda: False)():
         ignored, screenshot = screenshot, None
+    t_look = time.time()
     try:
         raw = vision_adapter.observe(screenshot=screenshot, target=target)   # NELLY_VISION_TIMEOUT applies
     except Exception as e:                                   # noqa: BLE001
@@ -73,6 +78,7 @@ def perceive_screen(app: str, target: str, screenshot=None, scenario: str = None
         return failed_context(f"vision_error:{type(e).__name__}: {e}")
     ok, errs = validate_observation(raw)
     ctx = normalize(raw, source="nelly_vision", target=target)
+    ctx["look_seconds"] = round(time.time() - t_look, 1)
     if ignored is not None:
         ctx["warnings"].append(f"live run: screenshot file ignored ({os.path.basename(str(ignored))}), "
                                "live screen captured instead")
@@ -257,6 +263,7 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
 def _observe(sub_result: dict, ctx: dict) -> bool:
     """Record what we see. False = the screen is not readable enough to act on."""
     sub_result["last_vision_result"] = ctx
+    sub_result.setdefault("looks", []).append(look_summary(ctx))     # kept for the run viewer / trace
     sub_result["vision_source"] = ctx["vision_source"]
     sub_result["quality"] = ctx["quality"]
     if ctx["needs_review"]:      # don't act on unreadable grounding — escalate instead of guessing

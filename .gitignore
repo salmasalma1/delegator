@@ -26,3 +26,4 @@ vendor/
 # --- local scratch ---------------------------------------------------------
 *.log
 graph_checkpoints.db
+runs/
