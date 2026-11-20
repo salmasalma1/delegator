@@ -178,14 +178,20 @@ def console_approver(proposal: dict) -> dict:
     print(f"  why    : {proposal.get('reason')}   (risk: {proposal.get('risk_level')}, hash {proposal['hash'][:10]})")
     scopes = proposal.get("scopes") or ["once"]
     opts = "[y] allow once" + ("  [s] allow for this session" if "session" in scopes else "") + "  [n] deny"
-    try:
-        ans = input(f"  {opts} > ").strip().lower()
-    except EOFError:
-        return {"granted": False, "scope": "once"}
-    if ans == "y":
-        return {"granted": True, "scope": "once"}
-    if ans == "s" and "session" in scopes:
-        return {"granted": True, "scope": "session"}
+    for attempt in range(3):
+        try:
+            ans = input(f"  {opts} > ").strip().lower()
+        except EOFError:
+            return {"granted": False, "scope": "once"}
+        if ans == "y":
+            return {"granted": True, "scope": "once"}
+        if ans == "s" and "session" in scopes:
+            return {"granted": True, "scope": "session"}
+        if ans in ("n", ""):
+            return {"granted": False, "scope": "once"}
+        # Not understood (for example the Arabic layout types a different letter for the y key).
+        # Never a yes: ask again, and after 3 unclear answers it is a no.
+        print("  not understood: type y, s or n (check the keyboard language is English)")
     return {"granted": False, "scope": "once"}
 
 
