@@ -58,4 +58,9 @@ for n_ in ("langgraph", "langgraph.graph", "langgraph.checkpoint", "langgraph.ch
 sys.modules["langgraph.graph"].StateGraph = object; sys.modules["langgraph.graph"].END = "END"; sys.modules["langgraph.checkpoint.memory"].MemorySaver = object
 import graph.builder as B
 assert B.route_after_director({"status": "escalate"}) == "escalate" and B.route_after_director({"status": "failed"}) == "end" and B.route_after_director({"status": "delegating"}) == "plan_check"
+# 8) "Windows Shell" is not an application: refused once, then the corrected plan is accepted
+shell = [{"node": "Windows Shell: Open Notepad", "app": "Windows Shell", "flag": "A Notepad window is open", "steps": ["open notepad"]}]
+calls.clear(); llm.chat_json = seq(shell, good); n = P.plan("t")
+assert len(calls) == 2 and "is not an application" in calls[1] and n[0]["app"] == "Notepad"
+assert "Windows Shell" in reasoning.SYSTEM and "never" in reasoning.SYSTEM     # the prompt names the rule
 print("OK brain")
