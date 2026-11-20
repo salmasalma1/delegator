@@ -41,6 +41,9 @@ Principles:
   installing or submitting unless the user explicitly asked for that.
 - One app per sub-goal. Start a new sub-goal when the app changes, or when a result must be
   confirmed before the next part can rely on it.
+- "app" is the application the sub-goal happens in, by its own name (Notepad, Calculator, File
+  Explorer, Chrome). Opening an application is part of that application's own sub-goal: "Notepad:
+  open it and type hello", never "Windows Shell", "Start menu", "Desktop" or "Taskbar".
 - Order by dependency. If a sub-goal needs something an earlier one produced (a link, text, a
   file path), say in its steps where it comes from, and make the earlier flag state that the
   thing now exists.
@@ -55,6 +58,12 @@ Principles:
   the approach that failed instead of repeating it."""
 
 
+# Not applications. Opening an app belongs to that app's own sub-goal, so these names are refused and
+# the planner is asked again (same retry path as every other problem).
+NOT_AN_APP = {"windows shell", "shell", "windows", "windows explorer shell", "start menu", "start", "taskbar",
+              "desktop", "system", "operating system", "os", "computer", "pc", "screen"}
+
+
 def _problems(item, i: int) -> List[str]:
     p = []
     if not isinstance(item, dict):
@@ -64,6 +73,9 @@ def _problems(item, i: int) -> List[str]:
             p.append(f"item {i}: '{k}' missing or empty")
     if isinstance(item.get("flag"), str) and item["flag"].strip().lower().rstrip(".") in UNCHECKABLE:
         p.append(f"item {i}: flag {item['flag']!r} cannot be checked on screen; describe what is visible")
+    if isinstance(item.get("app"), str) and item["app"].strip().lower() in NOT_AN_APP:
+        p.append(f"item {i}: app {item['app']!r} is not an application; name the app being opened or used "
+                 f"(opening an app is part of that app's own sub-goal)")
     st = item.get("steps")
     if not (isinstance(st, list) and 1 <= len(st) <= MAX_STEPS and all(isinstance(s, str) and s.strip() for s in st)):
         p.append(f"item {i}: 'steps' must be 1-{MAX_STEPS} non-empty strings")
