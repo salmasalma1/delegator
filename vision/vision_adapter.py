@@ -98,6 +98,16 @@ def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
     return box["data"]
 
 
+def _accepts_source(perceiver) -> bool:
+    """True when this Perceiver's perceive_detailed takes a `source` argument (older packages do not)."""
+    import inspect                                                        # noqa: PLC0415
+    try:
+        params = inspect.signature(perceiver.perceive_detailed).parameters
+    except (TypeError, ValueError):
+        return False
+    return "source" in params or any(p.kind is inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+
 def _observe_once(screenshot=None, target=None, allow_vlm: bool = False, gen=None) -> dict:
     from vision.env_check import ensure_memory_for_ocr                   # noqa: PLC0415
     ensure_memory_for_ocr()                 # F6: below the safe level OCR is never started (it crashed the process)
@@ -112,8 +122,13 @@ def _observe_once(screenshot=None, target=None, allow_vlm: bool = False, gen=Non
         image, screen, window = _cap.capture_window() if use_window else capture_screen()
     else:
         image, screen, window = screenshot, None, None
-    res = p.perceive_detailed(image, target=target, screen=screen, window=window,
-                              screenshot_id=new_screenshot_id(), allow_vlm=allow_vlm)
+    kwargs = dict(target=target, screen=screen, window=window, screenshot_id=new_screenshot_id(),
+                  allow_vlm=allow_vlm)
+    if screenshot is None and _accepts_source(p):
+        # Team 1's newer Perceiver marks every observation "offline_image" unless the caller says it came from a
+        # live capture, and its CoordinateManager then refuses to turn any box into a click point.
+        kwargs["source"] = "live_capture"
+    res = p.perceive_detailed(image, **kwargs)
     obs = getattr(res, "observation", None)
     if obs is None:
         raise RuntimeError("nelly_vision returned no observation")
