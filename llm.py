@@ -116,6 +116,21 @@ def available() -> bool:
     return bool(key) and "PUT_YOUR_KEY" not in key
 
 
+_KEEP_ESCAPE = re.compile(r'(\\\\|\\"|\\/|\\u[0-9a-fA-F]{4})|\\')
+
+
+def loads_lenient(text: str):
+    """json.loads, and if that fails ONE repair: every backslash that is not a complete JSON escape
+    (a pair, \\", \\/ or \\uXXXX) is a literal backslash. Models often write a Windows path such as
+    D:\\11.22.63 with single backslashes; `\\1` is not a JSON escape, so the whole answer was refused.
+    Strict parsing is always tried first and a clean answer is never touched. Raises ValueError as before."""
+    try:
+        return json.loads(text)
+    except ValueError:
+        fixed = _KEEP_ESCAPE.sub(lambda m: m.group(1) or "\\\\", text)
+        return json.loads(fixed)
+
+
 def chat_json(system: str, user: str, model: str = "qwen3-vl-plus", temperature: float = 0.0):
     """Returns the parsed JSON object/array. Raises LLMUnavailable, LLMError or ValueError(raw text)."""
     if not available():
@@ -124,7 +139,7 @@ def chat_json(system: str, user: str, model: str = "qwen3-vl-plus", temperature:
                      model=model, temperature=temperature)
     m = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
     try:
-        return json.loads(m.group(1) if m else text)
+        return loads_lenient(m.group(1) if m else text)
     except Exception as e:                                   # noqa: BLE001
         raise ValueError(f"unparseable model answer: {text[:200]}") from e
 
