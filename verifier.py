@@ -43,6 +43,8 @@ class RuleVerifier(Verifier):
             problems.append(f"worker_status={status}")
         if not steps:
             problems.append("no_steps_done")
+        if sub_result.get("error") and status != "completed":
+            problems.append(f"worker_error={str(sub_result['error'])[:200]}")   # why it stopped, not only that it did
         # only actions that point at something on screen need a grounded element
         needs_el = ("click", "type")
         if any(not (s.get("target") or {}).get("element_id")
