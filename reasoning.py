@@ -49,6 +49,9 @@ Principles:
   must be confirmed before the next can rely on it: getting to the right place (open the app,
   open a folder or page) is one sub-goal, and creating, editing or saving something there is the
   next. Do not split further than that: no sub-goal for a single click or keystroke.
+- Text the user wants typed, named or saved (anything in quotes, a file or folder name, a path) is
+  copied into the plan EXACTLY as written, character for character. Never correct spelling, spacing
+  or punctuation in it, and never rephrase it.
 - Order by dependency. If a sub-goal needs something an earlier one produced (a link, text, a
   file path), say in its steps where it comes from, and make the earlier flag state that the
   thing now exists.
