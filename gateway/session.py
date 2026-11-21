@@ -39,7 +39,7 @@ def parse_command(text: str):
 
 
 class Session:
-    def __init__(self, graph=None, approver="auto", on_event=None):
+    def __init__(self, graph=None, approver="auto", on_event=None, allow_task=False):
         if graph is None:
             from graph.builder import build_graph
             graph = build_graph()
@@ -48,6 +48,7 @@ class Session:
         self.on_event = on_event
         self.history = []                # one report per finished task
         self.pending = None              # {"goal", "question"} while waiting for the user's answer
+        self.allow_task = bool(allow_task)   # the user allowed this whole task up front (not delete/send/pay)
         self.running = False
         if approver == "auto":           # a person at the terminal can answer approvals
             approver = safety_port.console_approver if sys.stdin.isatty() else None
@@ -68,6 +69,15 @@ class Session:
             return {"kind": "info", "text": "empty message"}
 
         goal = text.strip()
+        low = goal.lower()
+        for prefix in ("allow:", "/allow "):                  # the user's own words, never the model's
+            if low.startswith(prefix):
+                goal = goal[len(prefix):].strip()
+                text = goal
+                self.allow_task = True
+                break
+        if not goal:
+            return {"kind": "info", "text": "allow: needs a task after it"}
         if self.pending:                 # the user is answering our question
             q = self.pending
             self.pending = None
@@ -84,6 +94,7 @@ class Session:
         init = normalize_task(goal, source="text", session_id=self.session_id)
         config = {"configurable": {"thread_id": init["task_id"]}}
         self.running = True
+        safety_port.grant_task(self.allow_task)
         try:
             with safety_port.bind_approver(self.approver):
                 for event in self.graph.stream(init, config=config):
@@ -95,11 +106,14 @@ class Session:
             final = {**init, "status": "cancelled", "cancelled": True}
         finally:
             self.running = False
+            safety_port.grant_task(False)
 
         final.setdefault("language", init["language"])
         report = final_report(final)
         report["task_id"] = init["task_id"]
         if report["needs_user"]:
-            self.pending = {"goal": goal, "question": report["question"]}
+            self.pending = {"goal": goal, "question": report["question"]}   # a retry keeps the permission
+        else:
+            self.allow_task = False
         self.history.append(report)
         return {"kind": "report", "report": report, "text": render(report), "state": final}

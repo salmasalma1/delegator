@@ -248,6 +248,14 @@ class Gate:
                     "approval_id": self.session_grants[key],
                     "reason": f"{d.get('reason')} (allowed earlier for this session)"}
 
+        if not always and _task_grant[0]:
+            # The user typed an up-front permission for THIS task (run.py --allow-task, or "allow: <task>").
+            # Never for the always-ask list (delete, send, pay, ...) and never for a blocked action.
+            print(f"[safety] allowed by your permission for this task: {request.get('action_type')} "
+                  f"on {request.get('application')}")
+            return {**d, "decision": APPROVED, "approval_id": str(uuid.uuid4()), "approval_scope": "task",
+                    "reason": f"{d.get('reason')} (the user allowed this whole task up front)"}
+
         approver = _approver[0]
         if approver is None:
             return {**d, "approver": "none",
@@ -268,11 +276,23 @@ class Gate:
 
 
 _gate = [None]
+_task_grant = [False]
+
+
+def grant_task(on: bool = True):
+    """The user's up-front permission for ONE task: medium/high-risk actions are not asked one by one.
+    Delete / send / submit / pay / ... (always-ask) are still asked every time. Turn it off when the task ends."""
+    _task_grant[0] = bool(on)
+
+
+def task_granted() -> bool:
+    return _task_grant[0]
 
 
 def reset():
     """Forget session grants and the cached gate (tests, or a new session)."""
     _gate[0] = None
+    _task_grant[0] = False
 
 
 def get_safety() -> Gate:
