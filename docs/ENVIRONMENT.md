@@ -51,6 +51,7 @@ Secrets (API keys) belong in `.env`, which is never committed. Never paste their
 | `NELLY_LLM_API_KEY`, `NELLY_LLM_BASE_URL`, `NELLY_LLM_MODEL` | Any OpenAI-compatible provider; the single source for every model call. When any of them is set, the DashScope variables are ignored. Set the model together with the base URL. Key in `.env` only. |
 | `NELLY_LLM_TIMEOUT` | Seconds to wait for the model's answer before the call fails with a clear error. [60] |
 | `NELLY_LLM_RETRIES` | How many times a failed model call is retried (503, timeout, dropped connection) before it fails. 0 to 8. [2] |
+| `NELLY_LLM_MAX_TOKENS` | Optional upper bound on the length of one model answer (a cut-off answer is re-asked once). Unset = the provider default. [unset] |
 | `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | **Legacy** provider settings, used only when no `NELLY_LLM_*` variable is set. Key in `.env` only. |
 
 ## Store, persistence and output

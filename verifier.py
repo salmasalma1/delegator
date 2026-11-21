@@ -114,9 +114,8 @@ class VLMVerifier(Verifier):
             v = RuleVerifier().verify(node, sub_result, grounding)
             v["reason"] += f";vlm_error:{getattr(e, 'kind', 'no_key')}"
             return v
-        m = re.search(r"\{.*\}", text, re.DOTALL)
         try:
-            out = json.loads(m.group(0) if m else text)
+            out = llm.parse_json(text)
         except Exception:
             return {"passed": False, "confidence": 0.0, "method": self.name,
                     "reason": f"unparseable_vlm_answer:{text[:120]}", "evidence": None,

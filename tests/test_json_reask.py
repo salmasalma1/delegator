@@ -23,3 +23,10 @@ try:
 except ValueError as e:
     assert "after one re-ask" in str(e) and len(calls) == 2
 print("ok")
+
+# one parser for every model answer
+assert llm.parse_json('text {"passed": true, "x": ["a","b"]} end') == {"passed": True, "x": ["a", "b"]}
+assert llm.parse_json('{"p": "D:\\11.22.63"}')["p"].startswith("D:")
+os.environ["NELLY_LLM_MAX_TOKENS"] = "300"; assert llm.llm_max_tokens() == 300
+os.environ["NELLY_LLM_MAX_TOKENS"] = "x"; assert llm.llm_max_tokens() is None
+print("ok parse_json")

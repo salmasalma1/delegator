@@ -65,9 +65,8 @@ def understand(screenshot_path: str, grounding: Optional[dict] = None,
             {"type": "image_url", "image_url": {"url": _data_url(screenshot_path)}},
         ]},
     ], model=model, temperature=0.1)
-    m = re.search(r"\{.*\}", text, re.DOTALL)
     try:
-        return json.loads(m.group(0) if m else text)
+        return llm.parse_json(text)
     except Exception:
         return {"readable": None, "raw": text[:800], "parse_error": True}
 
