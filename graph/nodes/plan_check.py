@@ -6,6 +6,7 @@ Same honesty rule as the verifier: with no model it does not pretend. It lets th
 marked method="skipped" so the audit shows the plan was never really checked.
 """
 import json
+import os
 
 import llm
 from graph.state import AgentState
@@ -25,6 +26,10 @@ If you are unsure, ok=false and say why. Answer ONLY JSON:
 
 
 def check_plan(goal: str, nodes: list) -> dict:
+    if os.getenv("NELLY_PLAN_CHECK", "").lower() in ("off", "0", "no"):
+        # The user turned the check off: say so. The plan runs UNCHECKED (method "skipped", never "llm").
+        return {"ok": True, "method": "skipped", "reason": "disabled_by_NELLY_PLAN_CHECK",
+                "missing": [], "extra": []}
     try:
         out = llm.chat_json(SYSTEM, f"User request: {goal}\n\nPlan:\n{json.dumps(nodes, ensure_ascii=False, indent=1)}")
     except llm.LLMUnavailable:

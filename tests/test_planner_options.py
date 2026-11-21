@@ -31,3 +31,10 @@ llm.chat_json = boom
 v = plan_check.check_plan("x", [])
 assert v["method"] == "skipped" and "ValueError" in v["reason"] and "cut" in v["reason"], v
 print("ok")
+
+os.environ["NELLY_PLAN_CHECK"] = "off"
+llm.chat_json = lambda *a, **k: (_ for _ in ()).throw(AssertionError("the model must not be called"))
+v = plan_check.check_plan("x", [])
+assert v["ok"] and v["method"] == "skipped" and v["reason"] == "disabled_by_NELLY_PLAN_CHECK", v
+os.environ.pop("NELLY_PLAN_CHECK")
+print("ok off")
