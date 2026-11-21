@@ -143,6 +143,20 @@ def _json_span(text: str) -> str:
     return text[i:j + 1] if j > i else text[i:]
 
 
+def parse_json(text: str):
+    """Parse a model answer into JSON the same way everywhere (first opener, lenient Windows paths). Raises ValueError."""
+    return loads_lenient(_json_span(text))
+
+
+def llm_max_tokens():
+    """Optional NELLY_LLM_MAX_TOKENS: an upper bound for one answer. Unset = the provider's own default."""
+    try:
+        n = int(os.getenv("NELLY_LLM_MAX_TOKENS", "") or 0)
+    except ValueError:
+        n = 0
+    return n if n > 0 else None
+
+
 def chat_json(system: str, user: str, model: str = "qwen3-vl-plus", temperature: float = 0.0):
     """Returns the parsed JSON object/array. Raises LLMUnavailable, LLMError or ValueError(raw text)."""
     if not available():
@@ -174,7 +188,8 @@ def chat_text(messages: list, model: str = "qwen3-vl-plus", temperature: float =
     client = openai.OpenAI(api_key=_key(), base_url=base_url, timeout=llm_timeout(), max_retries=llm_retries())
     model = provider_settings()["model"] or model           # NELLY_LLM_MODEL wins over the caller's default
     try:
-        resp = client.chat.completions.create(model=model, temperature=temperature, messages=messages)
+        extra = {"max_tokens": llm_max_tokens()} if llm_max_tokens() else {}
+        resp = client.chat.completions.create(model=model, temperature=temperature, messages=messages, **extra)
     except Exception as e:                                   # noqa: BLE001
         err = _as_llm_error(e, base_url)
         if err is None:
