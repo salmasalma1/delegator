@@ -427,5 +427,10 @@ def run_app_subgraph(app: str, node: str, steps: list, task_id: str,
         steps = [steps]
     use_loop = llm.available() and os.getenv("NELLY_ACTION_DECIDER", "").lower() != "legacy"
     if use_loop:
-        return _run_loop(app, node, steps, task_id, screenshot, scenario, flag, max_actions or MAX_ACTIONS)
-    return _run_steps(app, node, steps, task_id, screenshot, scenario, flag)
+        res = _run_loop(app, node, steps, task_id, screenshot, scenario, flag, max_actions or MAX_ACTIONS)
+    else:
+        res = _run_steps(app, node, steps, task_id, screenshot, scenario, flag)
+    if res.get("status") not in ("completed", "dry_run"):
+        # The reason must be visible where the person is looking (it used to show only in the saved trace).
+        print(f"[worker] {app}: stopped with status {res.get('status')}: {str(res.get('error') or 'no error text')[:240]}")
+    return res
