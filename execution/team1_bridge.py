@@ -31,7 +31,7 @@ import time
 
 from graph import control
 
-TOOLS = {"click": "click_element", "type": "type_text", "press": "press_keys", "open_app": "open_app"}
+TOOLS = {"click": "click_element", "type": "type_text", "press": "press_keys", "scroll": "scroll", "open_app": "open_app"}
 STATUS = {"ok": "success", "blocked": "blocked", "skipped": "cancelled", "error": "failed"}
 STRATEGY = {True: "team1_dryrun", False: "team1_desktop"}
 TEAM1_PACKAGES = ("contracts", "nelly_vision")
@@ -130,6 +130,13 @@ def to_tool_call(req: dict):
         if not keys:
             raise ValueError("bad_request", "press without keys")
         args = {"keys": keys}
+    elif tool == "scroll":
+        direction = str(params.get("direction") or "").lower()
+        if direction not in ("up", "down", "left", "right"):
+            raise ValueError("bad_request", f"scroll direction {direction!r} must be up, down, left or right")
+        if not req.get("target_element_id"):
+            raise ValueError("bad_request", "scroll needs an element: the wheel goes to the window under the pointer")
+        args = {"direction": direction, "amount": max(1, min(15, int(params.get("amount") or 5)))}
     elif tool == "open_app":
         app = params.get("app") or app
         args = {"name": str(app or "")}

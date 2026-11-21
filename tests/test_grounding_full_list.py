@@ -8,6 +8,7 @@ import sys
 sys.path.insert(0, ".")
 os.environ["NELLY_PERSIST"] = "0"
 os.environ.pop("NELLY_LIVE_INPUT", None)
+os.environ["NELLY_TOP_ELEMENTS"] = "30"                    # these cases are written for a list of 30
 from vision.adapter import normalize, to_prompt, usable_for          # noqa: E402
 from vision.ground import pick                                        # noqa: E402
 from graph.action_decider import _from_model, _legacy                # noqa: E402

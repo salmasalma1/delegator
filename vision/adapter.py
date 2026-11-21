@@ -15,9 +15,19 @@ What this module adds is only ours:
 Click POINTS are never computed from a box here. They come from Team 1's
 CoordinateManager.resolve_target_point() on the executor side.
 """
+import os
 from typing import Optional
 
-TOP_N = 30
+
+def _top_n() -> int:
+    """How many elements the model sees (NELLY_TOP_ELEMENTS, default 60, 10 to 200). More = more tokens and time."""
+    try:
+        return min(200, max(10, int(os.getenv("NELLY_TOP_ELEMENTS", "60"))))
+    except ValueError:
+        return 60
+
+
+TOP_N = _top_n()
 
 # Element types Team 1's contract allows (v0.3).
 ELEMENT_TYPES = ("text", "icon", "button", "input", "checkbox", "link", "menu_item", "tab", "image", "other")
@@ -220,6 +230,21 @@ def fake_observation(app: str, target: str = "button") -> dict:
 
 # --- prompt compaction (what the Brain actually sees) -----------------------
 
+def rerank(ctx: dict, goal_text: str, limit: Optional[int] = None) -> dict:
+    """The elements the model will see, most relevant to the goal first: more words shared with the goal text
+    (sub-goal, done-when, hints) first, then usable, then the most confident; ties keep Team 1's order.
+    Works on all_elements, so something that was cut earlier can come back. Returns a new context."""
+    if not isinstance(ctx, dict):
+        return ctx
+    els = ctx.get("all_elements") or ctx.get("elements") or []
+    words = target_words(goal_text) | {t for t in tokens(goal_text)}
+    ranked = sorted(enumerate(els), key=lambda p: (-len(words & tokens(p[1].get("text"))),
+                                                   not usable_for(p[1], goal_text),
+                                                   -(p[1].get("confidence") or 0.0), p[0]))
+    top = [e for _, e in ranked[: (limit or TOP_N)]]
+    return {**ctx, "elements": top, "truncated": len(els) > len(top)}
+
+
 def to_prompt(ctx: Optional[dict], limit: int = TOP_N) -> str:
     """Compact screen text for the LLM: one line per element, ids exactly as Team 1 numbered them."""
     if not isinstance(ctx, dict):
@@ -228,6 +253,10 @@ def to_prompt(ctx: Optional[dict], limit: int = TOP_N) -> str:
         f"app={ctx.get('app')} window={ctx.get('window_title')} detector={ctx.get('detector')} "
         f"quality={ctx.get('quality', {}).get('score')} needs_review={ctx.get('needs_review')}",
     ]
+    shown, total = min(limit, len(ctx.get("elements") or [])), ctx.get("total_elements")
+    if total and total > shown:
+        lines.append(f"(showing the {shown} most relevant of {total} elements; if the target is not listed, "
+                     f"scroll or use a keyboard shortcut)")
     for e in (ctx.get("elements") or [])[:limit]:
         box = [round(v, 2) for v in (e.get("bbox_norm") or [])]
         lines.append(f"{e.get('id')} {e.get('type')} {e.get('text')!r} {box} "

@@ -11,24 +11,30 @@ Anything else is rejected here, so a hallucinated id can never reach the executo
 import os
 
 import llm
-from vision.adapter import to_prompt, usable_for
+from vision.adapter import rerank, to_prompt, usable_for
 
-ALLOWED = ("click", "type", "press", "save_file", "create_folder", "focus_window", "open_app")
-NEEDS_ELEMENT = ("click", "type")
+ALLOWED = ("click", "type", "press", "scroll", "save_file", "create_folder", "focus_window", "open_app")
+NEEDS_ELEMENT = ("click", "type", "scroll")
+SCROLL_DIRECTIONS = ("up", "down", "left", "right")
+MAX_SCROLL = 15
 _warned = [False]
 
 SYSTEM = """You are the hands of a Windows desktop agent. You get ONE step to carry out and the
 elements currently visible on screen. Choose exactly ONE action that performs the step.
 
-Allowed actions: click, type, press, save_file, create_folder, focus_window, open_app.
+Allowed actions: click, type, press, scroll, save_file, create_folder, focus_window, open_app.
 - click / type need "element_id" copied EXACTLY from the list. type also needs "text".
 - press needs "keys": a list like ["ctrl","s"].
+- scroll moves the content under an element: it needs "element_id" (an element inside the area to scroll, for
+  example the file list or the text area), "direction" (up, down, left or right) and optionally "amount" (wheel
+  notches, 1 to 15, default 5). Use it when the target is not in the list: the list shows only the most
+  relevant elements, so look at the list, scroll, and the next look shows what appeared.
 - save_file / create_folder need "path". focus_window needs nothing.
 - open_app starts a program that is not open yet; it needs "app" (e.g. "Notepad"). Do not click the Start menu for this.
 Use only what is on screen. If the step cannot be done from this screen, answer action "none".
 
 Answer ONLY JSON:
-{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "app": null, "why": "short"}"""
+{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "app": null, "direction": null, "amount": null, "why": "short"}"""
 
 
 def _all(ctx: dict) -> list:
@@ -117,6 +123,15 @@ def _from_model(out, ctx: dict, target: str = None) -> dict:
         if not isinstance(out.get("text"), str):
             return {"status": "unresolved", "why": "type without text"}
         params["text"] = out["text"]
+    elif action == "scroll":
+        direction = str(out.get("direction") or "down").lower()
+        if direction not in SCROLL_DIRECTIONS:
+            return {"status": "unresolved", "why": f"scroll direction {direction!r} must be one of {SCROLL_DIRECTIONS}"}
+        try:
+            amount = int(out.get("amount") or 5)
+        except (TypeError, ValueError):
+            amount = 5
+        params["direction"], params["amount"] = direction, max(1, min(MAX_SCROLL, amount))
     elif action == "press":
         keys = out.get("keys")
         if not (isinstance(keys, list) and keys):
@@ -138,9 +153,13 @@ def _from_model(out, ctx: dict, target: str = None) -> dict:
 SYSTEM_LOOP = """You are the hands of a Windows desktop agent working on ONE sub-goal.
 You see the live screen and what you already did. Choose the NEXT single action.
 
-Allowed actions: click, type, press, save_file, create_folder, focus_window, open_app, finish.
+Allowed actions: click, type, press, scroll, save_file, create_folder, focus_window, open_app, finish.
 - click / type need "element_id" copied EXACTLY from the list. type also needs "text".
 - press needs "keys": a list like ["ctrl","s"].
+- scroll moves the content under an element: it needs "element_id" (an element inside the area to scroll, for
+  example the file list or the text area), "direction" (up, down, left or right) and optionally "amount" (wheel
+  notches, 1 to 15, default 5). Use it when the target is not in the list: the list shows only the most
+  relevant elements, so look at the list, scroll, and the next look shows what appeared.
 - save_file / create_folder need "path". focus_window needs nothing.
 - open_app starts a program that is not open yet; it needs "app" (e.g. "Notepad"). Do not click the Start menu for this.
 - finish: the "done when" condition is visibly true on the CURRENT screen, or every hint is
@@ -151,11 +170,12 @@ The hints are suggestions written before anyone saw the screen. Follow them when
 the screen says otherwise, trust the screen. Never repeat an action that did not change anything.
 
 Answer ONLY JSON:
-{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "app": null, "why": "short"}"""
+{"action": "...", "element_id": null, "text": null, "keys": null, "path": null, "app": null, "direction": null, "amount": null, "why": "short"}"""
 
 
 def decide_next(app: str, node: str, flag: str, hints: list, history: list, ctx: dict) -> dict:
     """One iteration of the worker loop. Same output shape as decide_action; action may be 'finish'."""
+    ctx = rerank(ctx, f"{node} {flag} {' '.join(str(h) for h in hints or [])}")   # most relevant elements first
     user = (f"App: {app}\nSub-goal: {node}\nDone when: {flag}\n"
             f"Hints: {hints}\nAlready done: {history or 'nothing yet'}\n\nScreen now:\n{to_prompt(ctx)}")
     try:
