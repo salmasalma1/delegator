@@ -5,6 +5,7 @@ import types
 sys.path.insert(0, ".")
 
 calls = []
+sources = []
 
 
 class Obs:
@@ -18,8 +19,10 @@ class Res:
 
 
 class Perceiver:
-    def perceive_detailed(self, image, target=None, screen=None, window=None, screenshot_id=None, allow_vlm=False):
+    def perceive_detailed(self, image, target=None, screen=None, window=None, screenshot_id=None, allow_vlm=False,
+                          source="offline_image"):
         calls.append(("perceive", image, screen))
+        sources.append(source)
         return Res()
 
 
@@ -49,6 +52,18 @@ calls.clear()                                           # an older vision packag
 del cap.capture_window
 va._observe_once()
 assert calls[0] == ("screen",), calls
+assert sources == ["live_capture", "live_capture", "live_capture"], sources     # live looks say so
+
+sources.clear()                                         # a screenshot FILE stays offline
+va._observe_once(screenshot="shot.png")
+assert sources == ["offline_image"], sources
+
+# an older Perceiver without a `source` argument still works
+class OldPerceiver:
+    def perceive_detailed(self, image, target=None, screen=None, window=None, screenshot_id=None, allow_vlm=False):
+        return Res()
+va._perceiver[0] = OldPerceiver()
+va._observe_once()
 print("ok")
 
 # the target guard works with a window crop: bbox_norm is relative to the crop, left/top is its origin
