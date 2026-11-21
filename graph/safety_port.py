@@ -43,6 +43,28 @@ _LEGACY = {"allow": APPROVED, "approve": APPROVED,
 # Actions that must never be auto-approved, whatever the mode or scope.
 ALWAYS_ASK = ("delete", "send", "submit", "pay", "purchase", "uninstall", "format")
 
+# A press or a click can delete without any action type saying so (the Delete key, a "Delete" menu item).
+# The request builder asks destructive_reason(); a non-empty answer makes the request always-ask.
+DESTRUCTIVE_KEYS = ("delete", "del")
+DESTRUCTIVE_WORDS = ("delete", "remove", "erase", "recycle bin", "discard", "move to trash")
+
+
+def destructive_reason(action_type: str, params: dict = None, element_text: str = "") -> str:
+    """Why this action may delete something, or "" when nothing points that way. Fail-safe: a false positive
+    only costs one extra question."""
+    action, params = (action_type or "").lower(), params or {}
+    if action == "press":
+        keys = [str(k).lower() for k in (params.get("keys") or [])]
+        if any(k in DESTRUCTIVE_KEYS for k in keys):
+            return "presses the Delete key"
+    if action in ("click", "double_click", "right_click"):
+        text = str(element_text or "").lower()
+        hit = next((w for w in DESTRUCTIVE_WORDS if w in text), None)
+        if hit:
+            return f"clicks a control labelled with '{hit}'"
+    return ""
+
+
 # Applications the schema allows; anything else always asks. Override: NELLY_APP_ALLOWLIST=a,b,c
 SCHEMA_APPS = ("Chrome", "Edge", "Notepad", "File Explorer", "Basic System Dialog")
 
@@ -120,6 +142,9 @@ class MockSafety:
         base = {"action_id": request.get("action_id"), "task_id": request.get("task_id"),
                 "risk_level": risk, "policy_id": "mock-policy", "policy_mode": mode, "mock": True}
         app = (request.get("application") or "").lower()
+        if request.get("destructive"):
+            return {**base, "decision": NEEDS_USER_APPROVAL, "always_ask": True,
+                    "reason": f"always-ask: this action {request['destructive']}"}
         if any(w in action for w in ALWAYS_ASK):
             return {**base, "decision": NEEDS_USER_APPROVAL, "always_ask": True,
                     "reason": f"always-ask action: {action}"}

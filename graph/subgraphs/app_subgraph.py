@@ -26,7 +26,7 @@ import time
 import llm
 from graph import control
 from graph.action_decider import decide_action, decide_next
-from graph.safety_port import (get_safety, classify, proposal_hash, normalize_decision,
+from graph.safety_port import (get_safety, classify, destructive_reason, proposal_hash, normalize_decision,
                                APPROVED, NEEDS_USER_APPROVAL)
 
 # Opt-in: NELLY_EXECUTOR=team1 runs Team 1's executor through execution/team1_bridge.py (same execute() and
@@ -107,7 +107,9 @@ def _build_request(decision: dict, app: str, task_id: str) -> dict:
     """The ONE frozen ExecutionRequest. Safety sees exactly this; the executor runs exactly this."""
     element = decision.get("element") or {}
     risk, reversible = classify(decision["action"])      # static table; the real Safety may override
-    return {
+    destructive = destructive_reason(decision["action"], decision.get("params"),
+                                     f"{element.get('text') or ''} {element.get('description') or ''}")
+    req = {
         "action_id": str(uuid.uuid4()),
         "task_id": task_id,
         "risk_level": risk,
@@ -119,6 +121,9 @@ def _build_request(decision: dict, app: str, task_id: str) -> dict:
         "strategy": "vision_fallback",
         "observation_id": decision.get("observation_id"),
     }
+    if destructive:                                       # Safety asks every time, in every mode
+        req["destructive"] = destructive
+    return req
 
 
 def _act(req: dict) -> dict:
