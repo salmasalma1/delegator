@@ -8,6 +8,7 @@ The model UNDERSTANDS the request and writes the plan. This file only:
 There is no silent fallback plan: a wrong plan is worse than no plan.
 """
 import json
+import os
 from typing import List, Optional
 
 import llm
@@ -44,6 +45,10 @@ Principles:
 - "app" is the application the sub-goal happens in, by its own name (Notepad, Calculator, File
   Explorer, Chrome). Opening an application is part of that application's own sub-goal: "Notepad:
   open it and type hello", never "Windows Shell", "Start menu", "Desktop" or "Taskbar".
+- A sub-goal is ONE outcome that can be confirmed on screen. Inside one app, split when a part
+  must be confirmed before the next can rely on it: getting to the right place (open the app,
+  open a folder or page) is one sub-goal, and creating, editing or saving something there is the
+  next. Do not split further than that: no sub-goal for a single click or keystroke.
 - Order by dependency. If a sub-goal needs something an earlier one produced (a link, text, a
   file path), say in its steps where it comes from, and make the earlier flag state that the
   thing now exists.
@@ -146,7 +151,9 @@ class QwenProvider(StrategyProvider):
             note = "" if not problems else \
                 "\n\nYour previous answer was rejected:\n- " + "\n- ".join(problems) + "\nFix these and answer again."
             try:
-                out = llm.chat_json(SYSTEM, user + note, model=self.model, temperature=0.2)
+                extra = {"force_model": True} if os.getenv("NELLY_PLAN_MODEL") else {}
+                out = llm.chat_json(SYSTEM, user + note, model=os.getenv("NELLY_PLAN_MODEL") or self.model,
+                                    temperature=0.2, **extra)
             except llm.LLMUnavailable as e:
                 raise PlanError(f"planner has no model: {e}") from e
             except llm.LLMError as e:                         # 401 / 429 / timeout / unreachable: end clearly

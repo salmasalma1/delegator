@@ -157,12 +157,12 @@ def llm_max_tokens():
     return n if n > 0 else None
 
 
-def chat_json(system: str, user: str, model: str = "qwen3-vl-plus", temperature: float = 0.0):
+def chat_json(system: str, user: str, model: str = "qwen3-vl-plus", temperature: float = 0.0, **kw):
     """Returns the parsed JSON object/array. Raises LLMUnavailable, LLMError or ValueError(raw text)."""
     if not available():
         raise LLMUnavailable("no API key: set DASHSCOPE_API_KEY (or NELLY_LLM_API_KEY)")
     messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
-    text = chat_text(messages, model=model, temperature=temperature)
+    text = chat_text(messages, model=model, temperature=temperature, **kw)
     for attempt in (1, 2):
         try:
             return loads_lenient(_json_span(text))
@@ -176,17 +176,18 @@ def chat_json(system: str, user: str, model: str = "qwen3-vl-plus", temperature:
                                         "string). Answer again with ONLY one complete JSON object, a very short "
                                         "\"why\" with no double quotes inside it, and Windows paths with doubled "
                                         "backslashes."}]
-        text = chat_text(messages, model=model, temperature=temperature)
+        text = chat_text(messages, model=model, temperature=temperature, **kw)
 
 
-def chat_text(messages: list, model: str = "qwen3-vl-plus", temperature: float = 0.0) -> str:
+def chat_text(messages: list, model: str = "qwen3-vl-plus", temperature: float = 0.0, force_model: bool = False) -> str:
     """One chat call -> the answer text. Raises LLMUnavailable (no key) or LLMError (provider error / timeout)."""
     if not available():
         raise LLMUnavailable("no API key: set NELLY_LLM_API_KEY (or the legacy DASHSCOPE_API_KEY)")
     import openai
     base_url = _base_url()
     client = openai.OpenAI(api_key=_key(), base_url=base_url, timeout=llm_timeout(), max_retries=llm_retries())
-    model = provider_settings()["model"] or model           # NELLY_LLM_MODEL wins over the caller's default
+    if not force_model:                                      # force_model: the caller named this model on purpose
+        model = provider_settings()["model"] or model        # NELLY_LLM_MODEL wins over the caller's default
     try:
         extra = {"max_tokens": llm_max_tokens()} if llm_max_tokens() else {}
         resp = client.chat.completions.create(model=model, temperature=temperature, messages=messages, **extra)
