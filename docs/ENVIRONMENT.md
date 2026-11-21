@@ -55,6 +55,7 @@ Secrets (API keys) belong in `.env`, which is never committed. Never paste their
 | `NELLY_LLM_RETRIES` | How many times a failed model call is retried (503, timeout, dropped connection) before it fails. 0 to 8. [2] |
 | `NELLY_LLM_MAX_TOKENS` | Optional upper bound on the length of one model answer (a cut-off answer is re-asked once). Unset = the provider default. [unset] |
 | `NELLY_PLAN_MODEL` | Optional: a different (stronger) model used ONLY for planning; it wins over NELLY_LLM_MODEL for that call. Unset = the normal model. [unset] |
+| `NELLY_PLAN_CHECK` | `off` = skip the model's review of the plan: the planner writes it and the run goes straight on, UNCHECKED (shown as method "skipped", reason disabled_by_NELLY_PLAN_CHECK). [on] |
 | `DASHSCOPE_API_KEY`, `DASHSCOPE_BASE_URL` | **Legacy** provider settings, used only when no `NELLY_LLM_*` variable is set. Key in `.env` only. |
 
 ## Store, persistence and output
