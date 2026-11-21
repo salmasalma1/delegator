@@ -9,6 +9,7 @@ import reasoning                                                    # noqa: E402
 from graph.nodes import plan_check                                  # noqa: E402
 
 assert "getting to the right place" in reasoning.SYSTEM
+assert "EXACTLY as written" in reasoning.SYSTEM
 
 seen = []
 def fake(system, user, model=None, temperature=0.0, **kw):
