@@ -32,6 +32,7 @@ Secrets (API keys) belong in `.env`, which is never committed. Never paste their
 |---|---|
 | `NELLY_MAX_ACTIONS` | Actions the worker may take per sub-goal. [8] |
 | `NELLY_REGROUND_RETRIES` | Fresh looks after a "the screen changed" refusal (stale, window_*, wrong_window) before escalating. [2] |
+| `NELLY_FIND_RETRIES` | Extra looks when the model finds no usable target on screen; each failure is fed back so it tries another way. 0 = stop at once, max 10. [3] |
 | `NELLY_ACTION_DECIDER` | `legacy` = force the no-model prefix parser. |
 | `NELLY_VERIFIER` | `rule` = force the offline structural verifier. |
 

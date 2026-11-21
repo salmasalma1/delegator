@@ -157,6 +157,15 @@ def reground_retries() -> int:
         return 2
 
 
+def find_retries() -> int:
+    """How many extra looks the worker may spend when it cannot find the target (default 3, 0 = stop at once,
+    at most 10). Bounded on purpose: an endless search burns minutes of model and vision time."""
+    try:
+        return min(10, max(0, int(os.getenv("NELLY_FIND_RETRIES", "3"))))
+    except ValueError:
+        return 3
+
+
 def _relook(sub_result: dict, relooks: int) -> bool:
     """After a failed _perform: True = look again (a fresh capture and decision), False = stop. Only executor
     refusals in REGROUND_CODES are retried, never Safety decisions or other errors; the count is bounded."""
@@ -315,6 +324,7 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
     sub_result = {"app": app, "node": node, "status": "running", "steps_done": [], "mode": "loop"}
     safety = get_safety()
     history, sigs, shot = [], [], screenshot
+    finds = 0                                                # looks that found no usable target (whole sub-goal)
 
     for _ in range(max_actions):
         relooks = 0
@@ -330,8 +340,18 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
             decision = decide_next(app, node, flag, hints, history, ctx)
             decision["observation_id"] = ctx.get("screenshot_id")
             if decision["status"] != "ok":
+                # Keep searching (bounded): tell the model what did not work, look again, let it try another way.
+                if finds < find_retries():
+                    finds += 1
+                    history.append(f"(attempt {finds} failed: {decision['why']}. Look at the screen again and "
+                                   f"find another way to reach the goal, for example a keyboard shortcut.)")
+                    sub_result.setdefault("find_attempts", []).append(str(decision["why"])[:200])
+                    print(f"[worker] could not find the target ({finds}/{find_retries()}): looking again")
+                    shot = screenshot
+                    continue
                 sub_result["status"] = "needs_regrounding"
-                sub_result["error"] = f"step_not_resolved: {node!r} ({decision['why']})"
+                sub_result["error"] = f"step_not_resolved: {node!r} ({decision['why']})" + \
+                    (f" (searched {finds} more time(s))" if finds else "")
                 sub_result["ungrounded_step"] = node
                 return sub_result
             if decision["action"] == "finish":
