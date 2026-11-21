@@ -20,7 +20,7 @@ import time
 from graph import control
 
 STRATEGY = "interim_pyautogui"
-SUPPORTED = ("click", "type", "press", "scroll", "open_app")
+SUPPORTED = ("click", "double_click", "type", "press", "scroll", "open_app")
 # The model NEVER supplies a command, only an app NAME. Only these names can be started.
 OPENABLE = {"notepad": "notepad.exe", "file explorer": "explorer.exe", "explorer": "explorer.exe",
             "calculator": "calc.exe"}
@@ -132,7 +132,7 @@ def execute(req: dict) -> dict:
         return _open_app(req, params, pg, dry, t0)
 
     point, rejected = (None, None)
-    if action in ("click", "type", "scroll"):
+    if action in ("click", "double_click", "type", "scroll"):
         point, rejected = _point(req)
         if rejected and not dry:
             code, text = rejected
@@ -149,6 +149,8 @@ def execute(req: dict) -> dict:
     try:
         if action == "click":
             pg.click(point[0], point[1])
+        elif action == "double_click":
+            pg.doubleClick(point[0], point[1])
         elif action == "type":
             if "text" not in params:
                 return _result(req, "failed", t0, "type without text", reject_code="bad_request")
