@@ -31,8 +31,9 @@ def check_plan(goal: str, nodes: list) -> dict:
         return {"ok": True, "method": "skipped", "reason": "no_model_plan_not_checked",
                 "missing": [], "extra": []}
     except Exception as e:                                    # noqa: BLE001
-        return {"ok": True, "method": "skipped", "reason": f"plan_check_error:{type(e).__name__}",
-                "missing": [], "extra": []}
+        why = f"plan_check_error:{type(e).__name__}: {str(e)[:200]}"
+        print(f"[plan] check SKIPPED, the plan runs unchecked ({why})")
+        return {"ok": True, "method": "skipped", "reason": why, "missing": [], "extra": []}
     if not isinstance(out, dict) or "ok" not in out:
         return {"ok": True, "method": "skipped", "reason": "plan_check_unparseable",
                 "missing": [], "extra": []}
