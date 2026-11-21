@@ -20,7 +20,7 @@ import time
 from graph import control
 
 STRATEGY = "interim_pyautogui"
-SUPPORTED = ("click", "type", "press", "open_app")
+SUPPORTED = ("click", "type", "press", "scroll", "open_app")
 # The model NEVER supplies a command, only an app NAME. Only these names can be started.
 OPENABLE = {"notepad": "notepad.exe", "file explorer": "explorer.exe", "explorer": "explorer.exe",
             "calculator": "calc.exe"}
@@ -132,7 +132,7 @@ def execute(req: dict) -> dict:
         return _open_app(req, params, pg, dry, t0)
 
     point, rejected = (None, None)
-    if action in ("click", "type"):
+    if action in ("click", "type", "scroll"):
         point, rejected = _point(req)
         if rejected and not dry:
             code, text = rejected
@@ -156,6 +156,14 @@ def execute(req: dict) -> dict:
             err = _type_text(pg, str(params["text"]))
             if err:
                 return _result(req, "failed", t0, err, reject_code="unsupported_text")
+        elif action == "scroll":
+            direction = str(params.get("direction") or "").lower()
+            if direction not in ("up", "down", "left", "right") or not point:
+                return _result(req, "failed", t0, "scroll needs a direction and an element", reject_code="bad_request")
+            notches = max(1, min(15, int(params.get("amount") or 5)))
+            pg.moveTo(point[0], point[1])
+            (pg.scroll if direction in ("up", "down") else pg.hscroll)(
+                notches * 120 * (1 if direction in ("up", "right") else -1))
         elif action == "press":
             keys = params.get("keys") or []
             if not keys:

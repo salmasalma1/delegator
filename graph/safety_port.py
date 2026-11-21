@@ -75,7 +75,7 @@ MODES = {
 }
 
 # Static risk table. The WORKER does not judge risk; the real Safety may override this.
-_RISK = {"click": ("low", True), "open_app": ("medium", True), "press": ("low", True), "focus_window": ("low", True),
+_RISK = {"click": ("low", True), "open_app": ("medium", True), "press": ("low", True), "scroll": ("low", True), "focus_window": ("low", True),
          "type": ("medium", True), "create_folder": ("medium", True), "save_file": ("medium", False)}
 
 _warned = set()
