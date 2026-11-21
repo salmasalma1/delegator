@@ -131,17 +131,38 @@ def loads_lenient(text: str):
         return json.loads(fixed)
 
 
+def _json_span(text: str) -> str:
+    """The outermost {...} or [...] of an answer, starting at whichever opens FIRST. A cut-off object must not be
+    mistaken for the array inside it (["alt","d"]); an unclosed object is returned whole so it fails and is re-asked."""
+    starts = [i for i in (text.find("{"), text.find("[")) if i >= 0]
+    if not starts:
+        return text
+    i = min(starts)
+    close = "}" if text[i] == "{" else "]"
+    j = text.rfind(close)
+    return text[i:j + 1] if j > i else text[i:]
+
+
 def chat_json(system: str, user: str, model: str = "qwen3-vl-plus", temperature: float = 0.0):
     """Returns the parsed JSON object/array. Raises LLMUnavailable, LLMError or ValueError(raw text)."""
     if not available():
         raise LLMUnavailable("no API key: set DASHSCOPE_API_KEY (or NELLY_LLM_API_KEY)")
-    text = chat_text([{"role": "system", "content": system}, {"role": "user", "content": user}],
-                     model=model, temperature=temperature)
-    m = re.search(r"(\{.*\}|\[.*\])", text, re.DOTALL)
-    try:
-        return loads_lenient(m.group(1) if m else text)
-    except Exception as e:                                   # noqa: BLE001
-        raise ValueError(f"unparseable model answer: {text[:200]}") from e
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    text = chat_text(messages, model=model, temperature=temperature)
+    for attempt in (1, 2):
+        try:
+            return loads_lenient(_json_span(text))
+        except Exception as e:                               # noqa: BLE001
+            if attempt == 2:
+                raise ValueError(f"unparseable model answer (after one re-ask): {text[:400]}") from e
+        # ONE re-ask: a cut or badly quoted answer is usually fixed by asking again for plain JSON.
+        messages = messages + [
+            {"role": "assistant", "content": text[:2000]},
+            {"role": "user", "content": "That was not valid JSON (it may have been cut off or had quotes inside a "
+                                        "string). Answer again with ONLY one complete JSON object, a very short "
+                                        "\"why\" with no double quotes inside it, and Windows paths with doubled "
+                                        "backslashes."}]
+        text = chat_text(messages, model=model, temperature=temperature)
 
 
 def chat_text(messages: list, model: str = "qwen3-vl-plus", temperature: float = 0.0) -> str:
