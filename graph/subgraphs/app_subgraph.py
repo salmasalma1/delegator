@@ -341,7 +341,8 @@ def _run_loop(app, node, hints, task_id, screenshot, scenario, flag, max_actions
             decision["observation_id"] = ctx.get("screenshot_id")
             if decision["status"] != "ok":
                 # Keep searching (bounded): tell the model what did not work, look again, let it try another way.
-                if finds < find_retries():
+                model_error = str(decision.get("why", "")).startswith("decider_error:")
+                if finds < find_retries() and not model_error:   # a model / provider error is not a vision problem
                     finds += 1
                     history.append(f"(attempt {finds} failed: {decision['why']}. Look at the screen again and "
                                    f"find another way to reach the goal, for example a keyboard shortcut.)")

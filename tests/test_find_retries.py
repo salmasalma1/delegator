@@ -43,6 +43,14 @@ r = run([bad])                                                      # never foun
 assert len(looks) == 4 and r["status"] == "needs_regrounding" and "not on screen" in r["error"] \
     and "searched 3 more" in r["error"], (looks, r)
 
+# a provider / model error is not "target not found": no extra looks, stop at once with the real reason
+def boom(s, u, **k):
+    raise llm.LLMError("LLM: provider error (HTTP 404) at example.test")
+looks.clear()
+llm.chat_json = boom
+r = A.run_app_subgraph("Notepad", "make a folder", ["click New folder"], "t", flag="x", max_actions=1)
+assert len(looks) == 1 and r["status"] == "needs_regrounding" and "decider_error" in r["error"] and "searched" not in r["error"], (looks, r)
+
 os.environ["NELLY_FIND_RETRIES"] = "0"
 r = run([bad])
 assert len(looks) == 1 and "searched" not in r["error"], r
