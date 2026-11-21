@@ -193,6 +193,21 @@ def _record_action(sub_result: dict, req: dict, verdict: dict, element: dict,
     })
 
 
+def _bring_app_forward(app: str, task_id: str, sub_result: dict, ctx: dict) -> None:
+    """Best effort focus_window for the step's app, through the same Safety gate and executor as any action.
+    It never raises and never clicks; if it is not approved or not executed, the next look simply fails again."""
+    try:
+        decision = {"action": "focus_window", "params": {}, "element": {}, "observation_id": ctx.get("screenshot_id")}
+        req = _build_request(decision, app, task_id)
+        verdict = normalize_decision(get_safety().check(req))
+        if verdict["decision"] != APPROVED:
+            return
+        res = _act(req)
+        _record_action(sub_result, req, verdict, {}, res, ran=True)
+    except Exception:                                        # noqa: BLE001
+        pass
+
+
 def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, ctx: dict, label: str):
     """
     SAFETY then ACT for one decided action, and record it.
@@ -206,6 +221,11 @@ def _perform(decision: dict, app: str, task_id: str, safety, sub_result: dict, c
         sub_result["status"] = "needs_regrounding"
         sub_result["error"] = why_not
         sub_result["ungrounded_step"] = label
+        if "belongs to another window" in (why_not or ""):
+            # Another window was in front when the screen was read: ask for the app's window (Safety decides),
+            # then let the loop look again, bounded by NELLY_REGROUND_RETRIES. No click is sent to the wrong window.
+            _bring_app_forward(app, task_id, sub_result, ctx)
+            sub_result["reground_code"] = "wrong_window"
         return False, None
     req = _build_request(decision, app, task_id)
 
