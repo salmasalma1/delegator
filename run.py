@@ -1,6 +1,8 @@
 """Run NELLY (text).
 
     python run.py "your task"      one task, then exit
+    python run.py --allow-task "task"   you allow the whole task up front (never delete/send/pay); in interactive mode
+                                   start the line with  allow:  instead
     python run.py --trace "task"   same, and also write runs/run_<id>.json + .html (see gateway/trace.py)
     python run.py                  interactive: type a task; type stop / exit
 
@@ -39,14 +41,15 @@ def _trace(out):
 
 def main(argv):
     trace = "--trace" in argv or os.getenv("NELLY_TRACE") == "1"
-    argv = [a for a in argv if a != "--trace"]
+    allow = "--allow-task" in argv
+    argv = [a for a in argv if a not in ("--trace", "--allow-task")]
     quiet = os.getenv("NELLY_QUIET") == "1"
     from vision.env_check import print_startup_warnings      # F6: detector / memory (read-only, no secrets)
     print_startup_warnings()
     import llm                                               # provider host + model in use (never the key)
     for line in llm.startup_lines():
         print(line)
-    session = Session(on_event=None if quiet else _progress)
+    session = Session(on_event=None if quiet else _progress, allow_task=allow)
 
     if argv:
         out = session.submit(" ".join(argv))

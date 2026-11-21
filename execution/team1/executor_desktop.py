@@ -184,7 +184,11 @@ class DesktopExecutor:
                 fg = self.windows.foreground()
                 if fg is None or fg["process"].lower() not in procs:
                     raise Blocked("focus_guard", f"{app} did not stay in front")
-                if pointer:   # the elements were read from another window: look again first
+                # CHANGED(team2): an approval prompt in the terminal takes the focus after the screen was read. If the
+                # screen WAS read from this very window (same hwnd) and it is in front again, nothing moved: go on.
+                # Only when the elements came from another window do we ask for a fresh look.
+                seen_hwnd = ((observation or {}).get("window") or {}).get("hwnd")
+                if pointer and not (seen_hwnd and seen_hwnd == fg["hwnd"]):
                     raise Blocked("focus_changed", f"{app} was brought to the front; re-read the screen")
             if pointer:
                 seen = ((observation or {}).get("window") or {}).get("process", "").lower()
