@@ -22,6 +22,7 @@ Secrets (API keys) belong in `.env`, which is never committed. Never paste their
 | `NELLY_VISION` | `off` / `0` / `fake` = do not use Team 1's vision (labelled fake screen, dry runs only). |
 | `NELLY_ALLOW_FAKE_VISION` | `1` = allow the fake screen even with live input (not recommended). |
 | `NELLY_VISION_TIMEOUT` | Seconds one vision call may take before the step stops as needs_review. `0` = no limit. [180] |
+| `NELLY_CAPTURE` | `window` = vision reads only the foreground window (Team 1 capture_window), which makes OCR much faster; anything else = the whole screen. [screen] |
 | `NELLY_MIN_FREE_MEM_GB` | Free memory (RAM + page file) below which OCR is never started (it crashed the process when memory was low). [3] |
 | `NELLY_MAX_OBS_AGE` | Maximum age in seconds of an observation used for a click (our resolver and, through the bridge, Team 1's executor). [15] |
 | `NELLY_OCR_LANGS`, `NELLY_DETECTOR_IMGSZ` | Read by Team 1's vision package itself (OCR languages, detector input size). |

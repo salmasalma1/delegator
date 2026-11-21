@@ -101,10 +101,15 @@ def observe(screenshot=None, target=None, allow_vlm: bool = False) -> dict:
 def _observe_once(screenshot=None, target=None, allow_vlm: bool = False, gen=None) -> dict:
     from vision.env_check import ensure_memory_for_ocr                   # noqa: PLC0415
     ensure_memory_for_ocr()                 # F6: below the safe level OCR is never started (it crashed the process)
-    from nelly_vision.capture import capture_screen, new_screenshot_id   # noqa: PLC0415
+    from nelly_vision import capture as _cap                              # noqa: PLC0415
+    capture_screen, new_screenshot_id = _cap.capture_screen, _cap.new_screenshot_id
     p = _get()
     if screenshot is None:
-        image, screen, window = capture_screen()
+        # NELLY_CAPTURE=window: only the foreground window is read (smaller picture = a much faster OCR).
+        # Team 1's capture_window keeps the crop origin, so points still map back to the screen; it falls back
+        # to the whole screen by itself when the window has no readable bounds.
+        use_window = os.getenv("NELLY_CAPTURE", "").lower() == "window" and hasattr(_cap, "capture_window")
+        image, screen, window = _cap.capture_window() if use_window else capture_screen()
     else:
         image, screen, window = screenshot, None, None
     res = p.perceive_detailed(image, target=target, screen=screen, window=window,
