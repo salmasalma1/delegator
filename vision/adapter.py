@@ -87,10 +87,14 @@ def matches_target(el: dict, target: Optional[str]) -> bool:
     return bool(target_words(target) & tokens(el.get("text")))
 
 
-def usable_for(el: dict, target: Optional[str] = None) -> bool:
+def usable_for(el: dict, target: Optional[str] = None, any_text: bool = False) -> bool:
     """is_usable(), plus: a `text` element with clickable=None is usable when its text matches the target
-    (Team 1 often returns a control's label only as OCR text, e.g. a menu bar line)."""
+    (Team 1 often returns a control's label only as OCR text, e.g. a menu bar line). any_text=True (double click):
+    a file or folder row is read as plain text, and the model picks it by looking, so any text element whose
+    clickable is not False is accepted; the target guard, Safety and Verify still apply."""
     if is_usable(el):
+        return True
+    if any_text and el.get("type") == "text" and el.get("clickable") in (None, "unknown"):
         return True
     return (el.get("type") == "text" and el.get("clickable") in (None, "unknown") and matches_target(el, target))
 

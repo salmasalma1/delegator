@@ -13,8 +13,8 @@ import os
 import llm
 from vision.adapter import rerank, to_prompt, usable_for
 
-ALLOWED = ("click", "type", "press", "scroll", "save_file", "create_folder", "focus_window", "open_app")
-NEEDS_ELEMENT = ("click", "type", "scroll")
+ALLOWED = ("click", "double_click", "type", "press", "scroll", "save_file", "create_folder", "focus_window", "open_app")
+NEEDS_ELEMENT = ("click", "double_click", "type", "scroll")
 SCROLL_DIRECTIONS = ("up", "down", "left", "right")
 MAX_SCROLL = 15
 _warned = [False]
@@ -22,8 +22,10 @@ _warned = [False]
 SYSTEM = """You are the hands of a Windows desktop agent. You get ONE step to carry out and the
 elements currently visible on screen. Choose exactly ONE action that performs the step.
 
-Allowed actions: click, type, press, scroll, save_file, create_folder, focus_window, open_app.
+Allowed actions: click, double_click, type, press, scroll, save_file, create_folder, focus_window, open_app.
 - click / type need "element_id" copied EXACTLY from the list. type also needs "text".
+- double_click opens the item under an element (a file, a folder, an icon): it needs "element_id". Use it
+  to open a file or folder shown in a list; a single click only selects it.
 - press needs "keys": a list like ["ctrl","s"].
 - scroll moves the content under an element: it needs "element_id" (an element inside the area to scroll, for
   example the file list or the text area), "direction" (up, down, left or right) and optionally "amount" (wheel
@@ -113,7 +115,7 @@ def _from_model(out, ctx: dict, target: str = None) -> dict:
         if element is None:
             return {"status": "unresolved",
                     "why": f"element_id {out.get('element_id')!r} is not on screen{_truncation_note(ctx)}"}
-        if not usable_for(element, target):
+        if not usable_for(element, target, any_text=(action == "double_click")):
             return {"status": "unresolved", "why": f"element {out.get('element_id')!r} not usable (clickable=False or not an interactive type)"}
 
     params = {}
@@ -153,8 +155,10 @@ def _from_model(out, ctx: dict, target: str = None) -> dict:
 SYSTEM_LOOP = """You are the hands of a Windows desktop agent working on ONE sub-goal.
 You see the live screen and what you already did. Choose the NEXT single action.
 
-Allowed actions: click, type, press, scroll, save_file, create_folder, focus_window, open_app, finish.
+Allowed actions: click, double_click, type, press, scroll, save_file, create_folder, focus_window, open_app, finish.
 - click / type need "element_id" copied EXACTLY from the list. type also needs "text".
+- double_click opens the item under an element (a file, a folder, an icon): it needs "element_id". Use it
+  to open a file or folder shown in a list; a single click only selects it.
 - press needs "keys": a list like ["ctrl","s"].
 - scroll moves the content under an element: it needs "element_id" (an element inside the area to scroll, for
   example the file list or the text area), "direction" (up, down, left or right) and optionally "amount" (wheel

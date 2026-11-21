@@ -31,7 +31,7 @@ import time
 
 from graph import control
 
-TOOLS = {"click": "click_element", "type": "type_text", "press": "press_keys", "scroll": "scroll", "open_app": "open_app"}
+TOOLS = {"click": "click_element", "double_click": "double_click_element", "type": "type_text", "press": "press_keys", "scroll": "scroll", "open_app": "open_app"}
 STATUS = {"ok": "success", "blocked": "blocked", "skipped": "cancelled", "error": "failed"}
 STRATEGY = {True: "team1_dryrun", False: "team1_desktop"}
 TEAM1_PACKAGES = ("contracts", "nelly_vision")
