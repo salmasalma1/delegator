@@ -1,0 +1,3 @@
+# Keep the spec tooling scripts (.specify/scripts/powershell) out of the GitHub language bar.
+# The files stay in the repo; only the statistics ignore them.
+*.ps1 linguist-detectable=false
