@@ -52,6 +52,45 @@ _gen = [0]                       # call counter: a call that timed out must not 
 _busy = threading.Lock()         # one perception at a time (the Perceiver holds models and frame caches)
 
 
+_warm = {"started": False, "done": False}
+
+
+def warmup() -> bool:
+    """Load Team 1's models before the first real look (the first look costs about 16 s more than the others).
+
+    It looks at a small blank picture, never at the screen, and it stores nothing (`_last` stays empty), so no
+    click point can ever come from it. Any failure is swallowed: the first real look reports its own errors.
+    Returns True when the models answered."""
+    if not _busy.acquire(blocking=False):                 # a real look is already running: nothing to warm
+        return False
+    try:
+        from vision.env_check import ensure_memory_for_ocr                # noqa: PLC0415
+        ensure_memory_for_ocr()                                           # below the safe level: never start OCR
+        from PIL import Image                                             # noqa: PLC0415
+        from nelly_vision import capture as _cap                          # noqa: PLC0415
+        p = _get()
+        p.perceive_detailed(Image.new("RGB", (320, 240), "white"), target=None, screen=None, window=None,
+                            screenshot_id=_cap.new_screenshot_id(), allow_vlm=False)
+        _warm["done"] = True
+        return True
+    except BaseException:                                                 # noqa: BLE001  (never break a task)
+        return False
+    finally:
+        _busy.release()
+
+
+def warmup_async() -> bool:
+    """Start warmup() once per process in the background, so it overlaps with planning (a model call that takes
+    several seconds anyway). NELLY_WARMUP=0 turns it off. True when a warm-up thread was started now."""
+    if os.getenv("NELLY_WARMUP", "1").lower() in ("0", "off", "false") or _warm["started"]:
+        return False
+    if not available():
+        return False
+    _warm["started"] = True
+    threading.Thread(target=warmup, name="nelly-vision-warmup", daemon=True).start()
+    return True
+
+
 def vision_timeout():
     """F5: seconds one observe() may take (NELLY_VISION_TIMEOUT, default 180; 0 or less = no limit)."""
     raw = os.getenv("NELLY_VISION_TIMEOUT")
