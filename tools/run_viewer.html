@@ -132,7 +132,7 @@ pre{margin:6px 0 0;font:12px/1.5 var(--mono);white-space:pre-wrap;overflow-wrap:
   var $=function(id){return document.getElementById(id)};
   var root=$('root'), out=$('out'), msg=$('msg');
   var KNOWN=['completed','escalated','verified','succeeded','dry_run','failed','denied','blocked','needs_input','awaiting_approval','running','pending','cancelled','superseded','skipped'];
-  var LABEL={completed:'completed (every node verified)',escalated:'escalated (needs your decision)',verified:'verified',succeeded:'succeeded (claimed, not verified)',dry_run:'dry run (nothing happened)',failed:'failed',denied:'denied',blocked:'blocked',needs_input:'needs input',awaiting_approval:'awaiting approval',running:'running',pending:'pending',cancelled:'cancelled',superseded:'superseded',skipped:'skipped'};
+  var LABEL={completed:'completed (every node passed its check)',escalated:'escalated (needs your decision)',verified:'verified',succeeded:'succeeded (claimed, not verified)',dry_run:'dry run (nothing happened)',failed:'failed',denied:'denied',blocked:'blocked',needs_input:'needs input',awaiting_approval:'awaiting approval',running:'running',pending:'pending',cancelled:'cancelled',superseded:'superseded',skipped:'skipped'};
 
   function h(tag,cls,text){var e=document.createElement(tag);if(cls)e.className=cls;if(text!=null)e.textContent=String(text);return e}
   function pick(o,keys){for(var i=0;i<keys.length;i++){if(o&&o[keys[i]]!=null&&o[keys[i]]!=='')return o[keys[i]]}return null}
