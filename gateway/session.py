@@ -96,6 +96,8 @@ class Session:
         self.running = True
         safety_port.grant_task(self.allow_task)
         try:
+            from vision import vision_adapter                       # noqa: PLC0415
+            vision_adapter.warmup_async()                           # models load while the planner thinks
             with safety_port.bind_approver(self.approver):
                 for event in self.graph.stream(init, config=config):
                     if self.on_event:

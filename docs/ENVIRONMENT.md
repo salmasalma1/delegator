@@ -23,6 +23,7 @@ Secrets (API keys) belong in `.env`, which is never committed. Never paste their
 | `NELLY_ALLOW_FAKE_VISION` | `1` = allow the fake screen even with live input (not recommended). |
 | `NELLY_VISION_TIMEOUT` | Seconds one vision call may take before the step stops as needs_review. `0` = no limit. [180] |
 | `NELLY_CAPTURE` | `window` = vision reads only the foreground window (Team 1 capture_window), which makes OCR much faster; anything else = the whole screen. [screen] |
+| `NELLY_WARMUP` | `0` = do not load Team 1's vision models in the background when a task starts. By default they load from a blank picture while the planner thinks, so the first real look is not the slow one. It never reads the screen. [on] |
 | `NELLY_TOP_ELEMENTS` | How many screen elements the model sees, most relevant to the goal first (10 to 200). More = more tokens and time per decision. [60] |
 | `NELLY_MIN_FREE_MEM_GB` | Free memory (RAM + page file) below which OCR is never started (it crashed the process when memory was low). [3] |
 | `NELLY_MAX_OBS_AGE` | Maximum age in seconds of an observation used for a click (our resolver and, through the bridge, Team 1's executor). [15] |
