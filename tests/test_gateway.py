@@ -24,7 +24,32 @@ assert S.parse_command("open the player and stop the music") is None and S.parse
 assert S.parse_command("exit") == "exit" and S.parse_command("خروج") == "exit"
 
 # 3) report: never upgrades the state
-r = final_report({"status": "completed", "language": "en", "nodes": [{"node": "A", "status": "verified"}]}); assert "Done" in r["headline"] and not r["needs_user"]
+SEM = [{"node": "A", "passed": True, "semantic": True}]
+r = final_report({"status": "completed", "language": "en", "nodes": [{"node": "A", "status": "verified"}], "verifications": SEM})
+assert "Done" in r["headline"] and "checked on the screen" in r["headline"] and not r["needs_user"] and r["checked_on_screen"]
+# honesty: the structural rule verifier never earns "checked on the screen" (problem 10 of the run report)
+RULE = [{"node": "A", "passed": True, "semantic": False}]
+for st in ({"status": "completed", "language": "en", "nodes": [{"node": "A"}], "verifications": RULE},
+           {"status": "completed", "language": "en", "nodes": [{"node": "A"}]},            # no verification recorded
+           {"status": "completed", "language": "en", "nodes": []}):
+    r = final_report(st)
+    assert "structural" in r["headline"] and "checked on the screen" not in r["headline"] and not r["checked_on_screen"], r
+r = final_report({"status": "completed", "language": "ar", "nodes": [{"node": "A"}], "verifications": RULE})
+assert "هيكلي" in r["headline"] and "اتأكدت من الشاشة" not in r["headline"].replace("ما اتأكدتش من الشاشة", "")
+# one node checked on screen, the other only structurally: still not "checked on the screen"
+r = final_report({"status": "completed", "language": "en", "nodes": [{"node": "A"}, {"node": "B"}],
+                  "verifications": SEM + [{"node": "B", "passed": True, "semantic": False}]})
+assert not r["checked_on_screen"] and "structural" in r["headline"], r
+# a later passing screen check replaces an earlier structural one for the same node
+r = final_report({"status": "completed", "language": "en", "nodes": [{"node": "A"}],
+                  "verifications": RULE + SEM})
+assert r["checked_on_screen"], r
+# a failed screen check does not count
+r = final_report({"status": "completed", "language": "en", "nodes": [{"node": "A"}],
+                  "verifications": [{"node": "A", "passed": False, "semantic": True}]})
+assert not r["checked_on_screen"], r
+# other statuses are untouched
+assert final_report({"status": "dry_run", "language": "en"})["checked_on_screen"] is False
 r = final_report({"status": "dry_run", "language": "en"}); assert "dry run" in r["headline"] and "Done" not in r["headline"]
 r = final_report({"status": "dry_run", "language": "ar"}); assert "تجريبي" in r["headline"]
 r = final_report({"status": "escalated", "language": "en", "requires_user": True, "escalation_reason": "need your input: Which file?"}); assert r["needs_user"] and r["question"] == "Which file?"
